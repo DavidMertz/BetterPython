@@ -1,0 +1,89 @@
+== Copies Versus References To Mutable Objects
+
+We saw in the last section that it is easy to forget that *all Python
+expressions* within a given scope, are evaluated at definition time. Users are
+sometimes bitten by mutable default arguments, but other constructs also
+provide an attractive nuisance.
+
+For example, it is commonplace to wish to initialize a list of
+lists.footnote:[If you work with tabular data, however, do consider whether
+NumPy or Pandas, or another DataFrame library, is a better choice for your
+purpose.]  An _obvious_ way to do so is:
+
+.Creating a "blank" Python list-of-lists (the wrong way)
+[source,python]
+----
+>>> from pprint import pprint
+>>> from enum import Enum
+>>> Color = Enum("C", ["BLANK", "RED", "GREEN", "BLUE"])
+>>> grid = [[Color.BLANK] * width] * height
+>>> pprint(grid)
+[[<C.BLANK: 1>, <C.BLANK: 1>, <C.BLANK: 1>, <C.BLANK: 1>],
+ [<C.BLANK: 1>, <C.BLANK: 1>, <C.BLANK: 1>, <C.BLANK: 1>],
+ [<C.BLANK: 1>, <C.BLANK: 1>, <C.BLANK: 1>, <C.BLANK: 1>],
+ [<C.BLANK: 1>, <C.BLANK: 1>, <C.BLANK: 1>, <C.BLANK: 1>],
+ [<C.BLANK: 1>, <C.BLANK: 1>, <C.BLANK: 1>, <C.BLANK: 1>]]
+----
+
+It seems like we have a nice grid, as we wished for.  However, let's try
+populating it:
+
+[source,python]
+----
+>>> grid[1][0] = Color.RED
+>>> grid[3][2] = Color.BLUE
+>>> grid[3][1] = Color.GREEN
+>>> grid[4][1:4] = [Color.RED] * 3
+>>> pprint(grid)
+[[<C.RED: 2>, <C.RED: 2>, <C.RED: 2>, <C.RED: 2>],
+ [<C.RED: 2>, <C.RED: 2>, <C.RED: 2>, <C.RED: 2>],
+ [<C.RED: 2>, <C.RED: 2>, <C.RED: 2>, <C.RED: 2>],
+ [<C.RED: 2>, <C.RED: 2>, <C.RED: 2>, <C.RED: 2>],
+ [<C.RED: 2>, <C.RED: 2>, <C.RED: 2>, <C.RED: 2>]]
+>>> pprint([id(sublist) for sublist in grid])
+[139768215997440,
+ 139768215997440,
+ 139768215997440,
+ 139768215997440,
+ 139768215997440]
+----
+
+Rather than having created a grid, we've create a list of 5 references to the
+identical object (a list in this case, but the same danger lurks for any
+mutable object type).
+
+There are a number of ways you might fix this once you remember the problem.
+Probably the easiest solution is to use comprehensions rather than the
+list-multiplication shortcut.
+
+.Creating a blank Python list-of-lists (a good way)
+[source,python]
+----
+>>> grid = [[Color.BLANK for _w in range(width)] for _h in range(height)]
+>>> pprint(grid)
+[[<C.BLANK: 1>, <C.BLANK: 1>, <C.BLANK: 1>, <C.BLANK: 1>],
+ [<C.BLANK: 1>, <C.BLANK: 1>, <C.BLANK: 1>, <C.BLANK: 1>],
+ [<C.BLANK: 1>, <C.BLANK: 1>, <C.BLANK: 1>, <C.BLANK: 1>],
+ [<C.BLANK: 1>, <C.BLANK: 1>, <C.BLANK: 1>, <C.BLANK: 1>],
+ [<C.BLANK: 1>, <C.BLANK: 1>, <C.BLANK: 1>, <C.BLANK: 1>]]
+>>> grid[1][0] = Color.RED
+>>> grid[3][2] = Color.BLUE
+>>> grid[3][1] = Color.GREEN
+>>> grid[4][1:4] = [Color.RED] * 3
+>>> pprint(grid)
+[[<C.BLANK: 1>, <C.BLANK: 1>, <C.BLANK: 1>, <C.BLANK: 1>],
+ [<C.RED: 2>, <C.BLANK: 1>, <C.BLANK: 1>, <C.BLANK: 1>],
+ [<C.BLANK: 1>, <C.BLANK: 1>, <C.BLANK: 1>, <C.BLANK: 1>],
+ [<C.BLANK: 1>, <C.GREEN: 3>, <C.BLUE: 4>, <C.BLANK: 1>],
+ [<C.BLANK: 1>, <C.RED: 2>, <C.RED: 2>, <C.RED: 2>]]
+>>> pprint([id(sublist) for sublist in grid])
+[139768305000064,
+ 139768302388864,
+ 139768304216832,
+ 139768302374976,
+ 139768216006464]
+----
+
+We have a list of length 5, each item being a distinct list (as indicated by
+their different ids) that can be modified independently.
+

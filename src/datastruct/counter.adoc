@@ -1,0 +1,145 @@
+== `collections.Counter`
+
+One of the loveliest collections in the `collections` module of the Python
+standard library is `Counter`.  This is an implementation of a concept
+sometimes called a _multiset_, _bag_, or _mset_
+(https://en.wikipedia.org/wiki/Multiset).  A very common use for counters is
+in conveniently creating what are often informally called
+histograms.footnote:[To be technical, a histogram is a representation of
+continuous data divided into _bins_ by numeric value ranges (most commonly
+uniformly sized bins).  Similar, but not identical, is a bar chart of the
+count or frequency of categorical data.  The utility shown in this chapter is
+the latter.]  For this section and the next few, I present the solution (i.e.,
+a Pythonic example) first, then the mistake.
+
+=== The Solution
+
+On my personal system, I have a small Python script called `histogram` that I
+use relatively frequently.  Let's look at that entire script:
+
+.Source code of `histogram`
+[source,python]
+----
+#!/usr/bin/env python
+import re
+from sys import argv, stdin
+from collections import Counter
+
+if '-w' in argv or '--word' in argv:               # (1)
+    # Word histogram
+    cleaned = re.sub(r'[^\w]', ' ', stdin.read())
+    hist = Counter(cleaned.lower().split())
+else:
+    # Letter histogram
+    cleaned = re.sub(r'[^\w]', '', stdin.read())
+    hist = Counter(cleaned)
+
+for item, count in hist.most_common():
+    print(f"{count}\t{item}")
+----
+
+(1) `argparse`, `click`, `docopt`, or `typer` would allow more versatile
+switch handling.
+
+I use this utility in manners such as the below (here combined with other
+shell utilities, such as `head`):
+
+[source,shell]
+----
+[BetterPython]$ histogram < frontmatter | head -8
+895     e
+807     t
+766     o
+641     n
+626     i
+618     a
+579     s
+465     r
+[BetterPython]$ histogram --word < frontmatter | head -8
+65      the
+52      of
+47      to
+43      a
+42      in
+42      python
+29      and
+26      i
+----
+
+I might even create a visualization this way, as Figure 6.1 (the similarly
+small `barchart` utility, which uses `matplotlib` is available from the book's
+website):
+
+[source,shell]
+----
+[BetterPython]$ histogram -w < frontmatter | head -8 | barchart
+----
+
+.Word counts of this book's frontmatter
+image::images/word-counts-frontmatter.png[]
+
+The data shown will not be precisely accurate for the final version of this
+book's front matter, but it will be similar.  In my script, I merely
+initialize a counter with iterables (either of letters or of words), and use
+the `.most_common()` method to order the objects being counted.  In larger
+programs, you are likely to call the method `.update()` repeatedly on an
+existing counter, each time increasing the count for each object in the
+passed-in iterable.  The `.subtract()` method decrements these counts.  For
+example:
+
+[source,python]
+----
+>>> from collections import Counter
+>>> count = Counter()
+>>> count.update("gildings")
+>>> count.update("delated")
+>>> count.most_common()
+[('d', 3), ('g', 2), ('i', 2), ('l', 2), ('e', 2), ('n', 1), 
+('s', 1), ('a', 1), ('t', 1)]
+>>> count.subtract("antennas")
+>>> count.most_common()
+[('d', 3), ('g', 2), ('i', 2), ('l', 2), ('e', 1), ('s', 0), 
+('t', 0), ('a', -1), ('n', -2)]
+>>> del count["n"]
+>>> count.most_common()
+[('d', 3), ('g', 2), ('i', 2), ('l', 2), ('e', 1), ('s', 0), 
+('t', 0), ('a', -1)]
+>>> count.most_common(4)
+[('d', 3), ('g', 2), ('i', 2), ('l', 2)]
+----
+
+All the letters (or any hashable objects) that have never been seen are not
+present, but each one that has been seen indicates a number of times.  Once
+seen, we might reach a zero or negative count.  Since `Counter` is a subclass
+of `dict` it still has all the usual dictionary behaviors, such as deleting a
+key, if we wish to use those.
+
+=== The Mistake
+
+If you didn't know about `collections.Counter` you could still implement the
+same program, of course.  It would merely be less elegant.  For example:
+
+[source,python]
+----
+>>> import re
+>>> from pathlib import Path
+>>> from operator import itemgetter
+>>> frontmatter = Path("frontmatter").read_text()
+>>> hist = {}
+>>> for word in cleaned.split():
+...     if word in hist:
+...         hist[word] += 1
+...     else:
+...         hist[word] = 1
+...
+>>> counts = sorted(hist.items(), key=itemgetter(1), reverse=True)
+>>> counts[:8]
+[('the', 65), ('of', 52), ('to', 47), ('a', 43), ('in', 42), 
+('python', 42), ('and', 29), ('i', 26)]
+----
+
+The result we want is definitely achievable without `collections.Counter`.
+However, we need to get more clever with comprehensions, custom sort order,
+slicing, and so on than if we use a counter.  The non-counter approach also
+requires 2-5 lines for each operation that is a one method call on a counter.
+

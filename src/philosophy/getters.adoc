@@ -1,0 +1,142 @@
+== Getters And Setters 
+
+In some programming languages—notably C++ and Java—a common pattern is to
+control access to private or protected variables, but to expose "getter" and
+"setter" methods.  In Python it is a mistake to use this pattern, although one
+sees such code written by programmers coming from other languages relatively
+often.
+
+At first glance, my admonition against getters and setters might seem to
+contradict that in the chapter _Advanced Python Usage_, in the section
+"Directly accessing a protected attribute."  There I advised against directly
+modifying pseudo-protected (i.e. one leading underscore) or pseudo-private
+(i.e. two leading underscores) instance attributes.  I use "pseudo-" in the
+prior sentence because, of course, in Python you are never truly prevented
+from reading or modifying these (other than by convention and mild
+name-mangling).  
+
+In so-called "bondage-and-discipline languages" like Java, the intention is to
+prevent users of a class from doing something they are not _supposed to_.  In
+contrast, a common saying among Pythonistas is "we're all adults here."  That
+is, the creator of a class may include _access advisories_ by using single or
+double leading underscores, but these are not _access modifiers_ in the style
+of C++ and Java (besides "protected" and "private", C++—and Visual Basic
+also—includes "friend" as an end-run around other access modifiers).
+
+If an attribute of a Python instance contains one or two leading underscores,
+it is not because the creator of the class tries to guarantee you won't
+access it, but simply as a way of indicating that the attribute might
+disappear in the next version of their class, or its meaning or values might
+be altered in ways that are not guaranteed by documented and public APIs.
+Also, perhaps the meaning of that attribute with an access advisory might
+actually do something subtly different than what you might initially assume.
+The class author is making you no promises about that attribute.
+
+Circling back to getters and setters, let's look at a quick example of such an
+anti-pattern in Python.  The following _works_, of course; it merely feels
+non-idiomatic.
+
+.Writing Java in Python anti-pattern
+[source,python]
+----
+class GetterSetterExample:
+    def __init__(self, value):
+        self._value = value
+
+    def get_value(self):
+        return self._value
+
+    def set_value(self, new_val):
+        self._value = new_val
+----
+
+Even if these extra methods took additional actions, this would not feel like
+good Python.  Yes, you should not muck with `._value` , but if an indirect
+mechanism to have guarded access to it is needed, *properties* provide a much
+more natural style.
+
+'''
+
+For a slightly more fleshed out example than `GetterSetterExample`, let's
+suppose we want a Rectangle class, but with the special constraint that if we
+imagine the rectangle having a lower-left corner at the origin, no part of the
+rectangle falls outside a circle with a given radius.  This is illustrated in
+Figure 5.1. In Pythonic style, we might write this as:
+
+.Valid and invalid rectangles according to diagonal length rule
+image::images/BoundedRectangleClass.png[]
+
+.Writing Pythonic Python
+[source,python]
+----
+from sys import stderr
+from math import sqrt
+
+class BoundedRectangle:
+    def __init__(self, x, y, radius=1):
+        assert x > 0 and y > 0 and radius > 0      # (1)
+        assert sqrt(x**2 + y**2) <= radius
+        self._x = x
+        self._y = y
+        self._radius = radius                      # (2)
+
+    @property
+    def x(self):
+        return self._x
+
+    @x.setter                                      # (3)
+    def x(self, new_x):
+        if new_x < 0 or sqrt(new_x**2 + self._y**2) > self._radius:
+            print("Rectangle bounds violated", file=stderr)
+            return
+        self._x = new_x
+
+    @property
+    def y(self):
+        return self._y
+
+    @y.setter
+    def y(self, new_y):
+        if new_y < 0 or sqrt(new_y**2 + self._x**2) > self._radius:
+            print("Rectangle bounds violated", file=stderr)
+            return
+        self._y = new_y
+
+    @property
+    def area(self):
+        return self._x * self._y
+----
+
+(1) Production code might do something more than assert invariants.
+
+(2) By design, no mechanism is provided to change radius after initialization.
+
+(3) A "setter" still has that name in its decorator, but not in its API.
+
+It wouldn't be unreasonable to notice that we saved no code in defining the
+class, nor even did it become more readable or obvious.  The Pythonic savings
+are for *users* of the class:
+
+[source,python]
+----
+>>> from BoundedRectangle import BoundedRectangle
+>>> rect = BoundedRectangle(0.65, 0.30)
+>>> rect.x, rect.y, rect.area
+(0.65, 0.3, 0.195)
+>>> rect.y = 0.25
+>>> rect.x, rect.y, rect.area
+(0.65, 0.25, 0.1625)
+>>> rect.y = 0.8
+Rectangle bounds violated
+>>> rect.x, rect.y, rect.area
+(0.65, 0.25, 0.1625)
+----
+
+The quick summary of this section is that using properties—either read-only as
+with `.area` or read/write as with `.x` and +++<code>.y</code>+++—provides a
+simpler and more Pythonic API for users of classes.  It remains the case that
+accessing "protected" attributes such as +++<code>._radius</code>+++ violates
+the _advice_ of the class creator and might produce unpredictable behavior
+(i.e. in this particular class, the radius is intended to be set only on
+initialization).
+

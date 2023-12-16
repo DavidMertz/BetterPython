@@ -1,0 +1,87 @@
+== `for` Loops Are More Idiomatic Than `while` Loops
+
+When possible, a Pythonic loop looks like: `for item in iterable`.  This is
+the basic idiom, and when you find yourself doing something else, think about
+whether that other thing is actually better.
+
+In writing a loop in a program, you are often faced with the choice between
+`for` and `while`.  Or to be precise, you _could_ always use either one for
+any given loop.  It may not be obvious, but you could get by in a language
+that only had `for` if it has infinite iterators.
+
+.Equivalent of `while predicate(a, b)` using only `for`
+[source,python]
+----
+>>> from itertools import repeat
+>>> a, b = 17, 23  # Initial example values have no special meaning
+>>> for _ in repeat(None):                         # (1)
+...     print("Current values:", a, b)
+...     if predicate(a, b):                        # (2)
+...         break
+...     a = get_data(a)                            # (3)
+...     b = get_data(b)                            # (3)
+...
+Current values: 857 338
+Current values: 613 500
+Current values: 611 47
+Current values: 387 871
+Current values: 689 812
+Current values: 406 892
+Current values: 817 522
+----
+
+(1) An infinite iterator always yielding `None`.
+
+(2) Deliberately vague about what `predicate()` is checking.
+
+(3) Deliberately vague about what `get_data()` is doing.
+
+The above code is a standard example of a `while True` loop, but written
+without `while`.  That is, we get data to work on in a stateful way. Then we
+evaluate that data with an expectation that it _might_ reach a state where we
+wish to exit the loop (but it might also be an eternally running
+server).footnote:[Readers are welcome to try to guess what `get_data()` and
+`predicate()` are doing.  Come prepared with a deep understanding of the
+Mersenne Twister PRNG.]
+
+Expressing `for` in terms of `while` is even simpler as a translation.
+
+.Equivalent of `for item in iterable` using only `while`
+[source,python]
+----
+>>> # iterable = <collection, generator, something else>
+>>> iterator = iter(iterable)
+>>> try:
+...     while True:
+...         item = next(iterator)
+...         print("Current item:", item)
+... except StopIteration:
+...     pass
+...
+Current item: 2
+Current item: 3
+Current item: 5
+Current item: 7
+Current item: 11
+----
+
+Obviously, you can do the same conditional branching, `break`, `continue`, or
+all the other actions you might put inside a `for` loop in the above `while`
+construct.
+
+Notwithstanding their formal equivalence (possibly with a small number of
+extra lines to force it), it is far more common for a `for` loop to feel
+Pythonic than is a `while` loop.  This general advice has _many_ exceptions,
+but you will find that _almost always_ when you loop in Python, it is either
+over a collection or over an iteratable (such as a generator function,
+generator comprehension, or custom iterable class).  Many of the times where
+this is not the case, it is a call to refactor the part of your code that
+provides data to operate _into_ an iterable.
+
+It is *not* a mistake to use `while`, but whenever you find yourself writing
+it, you should still ask yourself "can I do this as a `for` loop?" Ask
+yourself the same question for code you are in a position to refactor.  The
+answer may well be that the `while` loop is the most expressive and clearest
+version, but the question should still have occurred to you.  Thinking in
+terms of (potentially infinite) sequences usuallly promotes clear and elegant
+design in Python.

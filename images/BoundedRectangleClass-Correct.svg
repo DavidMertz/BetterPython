@@ -1,0 +1,274 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   version="1.1"
+   width="490px"
+   height="488px"
+   viewBox="-0.5 -0.5 490 488"
+   id="svg147"
+   sodipodi:docname="BoundedRectangleClass-Correct.svg"
+   inkscape:version="1.2.2 (b0a8486541, 2022-12-01)"
+   inkscape:export-filename="BoundedRectangleClass-Correct.png"
+   inkscape:export-xdpi="232.44"
+   inkscape:export-ydpi="232.44"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:xlink="http://www.w3.org/1999/xlink"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns:xhtml="http://www.w3.org/1999/xhtml">
+  <sodipodi:namedview
+     id="namedview149"
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     showgrid="false"
+     inkscape:zoom="2.1577869"
+     inkscape:cx="176.5698"
+     inkscape:cy="243.76828"
+     inkscape:window-width="2900"
+     inkscape:window-height="2080"
+     inkscape:window-x="932"
+     inkscape:window-y="72"
+     inkscape:window-maximized="0"
+     inkscape:current-layer="g137" />
+  <defs
+     id="defs97" />
+  <g
+     id="g137">
+    <ellipse
+       cx="200"
+       cy="287"
+       rx="200"
+       ry="200"
+       fill="rgb(255, 255, 255)"
+       stroke="rgb(0, 0, 0)"
+       pointer-events="all"
+       id="ellipse99" />
+    <path
+       d="M 479.88 287 L 472.88 290.5 L 474.63 287 L 472.88 283.5 Z"
+       fill="rgb(0, 0, 0)"
+       stroke="rgb(0, 0, 0)"
+       stroke-miterlimit="10"
+       pointer-events="all"
+       id="path103" />
+    <path
+       d="M 201 8.12 L 204.5 15.12 L 201 13.37 L 197.5 15.12 Z"
+       fill="rgb(0, 0, 0)"
+       stroke="rgb(0, 0, 0)"
+       stroke-miterlimit="10"
+       pointer-events="all"
+       id="path107" />
+    <g
+       transform="translate(-0.5 -0.5)"
+       id="g113">
+      <switch
+         id="switch111">
+        <foreignObject
+           pointer-events="none"
+           width="100%"
+           height="100%"
+           requiredFeatures="http://www.w3.org/TR/SVG11/feature#Extensibility"
+           style="overflow: visible; text-align: left;">
+          <xhtml:div
+             style="display: flex; align-items: unsafe center; justify-content: unsafe center; width: 1px; height: 1px; padding-top: 275px; margin-left: 441px;">
+            <xhtml:div
+               data-drawio-colors="color: rgb(0, 0, 0); background-color: rgb(255, 255, 255); "
+               style="box-sizing: border-box; font-size: 0px; text-align: center;">
+              <xhtml:div
+                 style="display: inline-block; font-size: 18px; font-family: Helvetica; color: rgb(0, 0, 0); line-height: 1.2; pointer-events: all; background-color: rgb(255, 255, 255); white-space: nowrap;">X</xhtml:div>
+            </xhtml:div>
+          </xhtml:div>
+        </foreignObject>
+        <text
+           x="441"
+           y="280"
+           fill="#000000"
+           font-family="Helvetica"
+           font-size="18px"
+           text-anchor="middle"
+           id="text109"
+           style="font-size:18px;font-family:Helvetica;text-anchor:middle;fill:#000000"><tspan
+             style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:18px;font-family:'DejaVu Sans';-inkscape-font-specification:'DejaVu Sans, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal"
+             id="tspan540">X</tspan></text>
+      </switch>
+    </g>
+    <g
+       transform="translate(-0.5 -0.5)"
+       id="g119">
+      <switch
+         id="switch117">
+        <foreignObject
+           pointer-events="none"
+           width="100%"
+           height="100%"
+           requiredFeatures="http://www.w3.org/TR/SVG11/feature#Extensibility"
+           style="overflow: visible; text-align: left;">
+          <xhtml:div
+             style="display: flex; align-items: unsafe center; justify-content: unsafe center; width: 1px; height: 1px; padding-top: 55px; margin-left: 220px;">
+            <xhtml:div
+               data-drawio-colors="color: rgb(0, 0, 0); background-color: rgb(255, 255, 255); "
+               style="box-sizing: border-box; font-size: 0px; text-align: center;">
+              <xhtml:div
+                 style="display: inline-block; font-size: 18px; font-family: Helvetica; color: rgb(0, 0, 0); line-height: 1.2; pointer-events: all; background-color: rgb(255, 255, 255); white-space: nowrap;">Y</xhtml:div>
+            </xhtml:div>
+          </xhtml:div>
+        </foreignObject>
+        <text
+           x="220"
+           y="60"
+           fill="#000000"
+           font-family="Helvetica"
+           font-size="18px"
+           text-anchor="middle"
+           id="text115"
+           style="font-size:18px;font-family:Helvetica;text-anchor:middle;fill:#000000"><tspan
+             style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:18px;font-family:'DejaVu Sans';-inkscape-font-specification:'DejaVu Sans, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal"
+             id="tspan542">Y</tspan></text>
+      </switch>
+    </g>
+    <rect
+       x="201"
+       y="187"
+       width="160"
+       height="100"
+       fill="#d5e8d4"
+       stroke="#82b366"
+       pointer-events="all"
+       id="rect121" />
+    <g
+       transform="translate(-0.5 -0.5)"
+       id="g127">
+      <switch
+         id="switch125"
+         transform="translate(-4,-14)">
+        <foreignObject
+           pointer-events="none"
+           width="100%"
+           height="100%"
+           requiredFeatures="http://www.w3.org/TR/SVG11/feature#Extensibility"
+           style="overflow: visible; text-align: left;">
+          <xhtml:div
+             style="display: flex; align-items: unsafe center; justify-content: unsafe center; width: 158px; height: 1px; padding-top: 237px; margin-left: 202px;">
+            <xhtml:div
+               data-drawio-colors="color: rgb(0, 0, 0); "
+               style="box-sizing: border-box; font-size: 0px; text-align: center;">
+              <xhtml:div
+                 style="display: inline-block; font-size: 12px; font-family: Helvetica; color: rgb(0, 0, 0); line-height: 1.2; pointer-events: all; white-space: normal; overflow-wrap: normal;">
+                <xhtml:font
+                   style="font-size: 18px;">
+                  <xhtml:b>Correctly<xhtml:br />
+Bounded<xhtml:br />
+Rectangle</xhtml:b>
+                </xhtml:font>
+              </xhtml:div>
+            </xhtml:div>
+          </xhtml:div>
+        </foreignObject>
+        <text
+           x="287"
+           y="231"
+           fill="rgb(0, 0, 0)"
+           font-family="Helvetica"
+           font-size="12px"
+           text-anchor="middle"
+           id="text123"
+           style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:12px;font-family:'DejaVu Sans';-inkscape-font-specification:'DejaVu Sans, Bold';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-anchor:middle;fill:#000000"><tspan
+             sodipodi:role="line"
+             id="tspan432"
+             x="287"
+             y="231"
+             style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:21.3333px;font-family:'DejaVu Sans';-inkscape-font-specification:'DejaVu Sans, Bold';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal">Correctly</tspan><tspan
+             sodipodi:role="line"
+             id="tspan434"
+             x="287"
+             y="257.66663"
+             style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:21.3333px;font-family:'DejaVu Sans';-inkscape-font-specification:'DejaVu Sans, Bold';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal">Bounded</tspan><tspan
+             sodipodi:role="line"
+             id="tspan436"
+             x="287"
+             y="284.33325"
+             style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:21.3333px;font-family:'DejaVu Sans';-inkscape-font-specification:'DejaVu Sans, Bold';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal">Rectangle</tspan></text>
+      </switch>
+    </g>
+    <path
+       d="M 88 453.4 L 201 287"
+       fill="none"
+       stroke="rgb(0, 0, 0)"
+       stroke-miterlimit="10"
+       stroke-dasharray="3 3"
+       pointer-events="stroke"
+       id="path129" />
+    <g
+       transform="translate(-0.5 -0.5)rotate(-56 106.89294673475706 398.69544187492556)"
+       id="g135">
+      <switch
+         id="switch133">
+        <foreignObject
+           pointer-events="none"
+           width="100%"
+           height="100%"
+           requiredFeatures="http://www.w3.org/TR/SVG11/feature#Extensibility"
+           style="overflow: visible; text-align: left;">
+          <xhtml:div
+             style="display: flex; align-items: unsafe center; justify-content: unsafe center; width: 1px; height: 1px; padding-top: 399px; margin-left: 107px;">
+            <xhtml:div
+               data-drawio-colors="color: rgb(0, 0, 0); background-color: rgb(255, 255, 255); "
+               style="box-sizing: border-box; font-size: 0px; text-align: center;">
+              <xhtml:div
+                 style="display: inline-block; font-size: 18px; font-family: Helvetica; color: rgb(0, 0, 0); line-height: 1.2; pointer-events: all; background-color: rgb(255, 255, 255); white-space: nowrap;">radius</xhtml:div>
+            </xhtml:div>
+          </xhtml:div>
+        </foreignObject>
+        <text
+           x="107"
+           y="404"
+           fill="#000000"
+           font-family="Helvetica"
+           font-size="18px"
+           text-anchor="middle"
+           id="text131"
+           style="font-size:18px;font-family:Helvetica;text-anchor:middle;fill:#000000"><tspan
+             style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:18px;font-family:'DejaVu Sans';-inkscape-font-specification:'DejaVu Sans, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal"
+             id="tspan544">radius</tspan></text>
+      </switch>
+    </g>
+    <path
+       d="M 201 287 L 474.63 287"
+       fill="none"
+       stroke="rgb(0, 0, 0)"
+       stroke-miterlimit="10"
+       pointer-events="stroke"
+       id="path101"
+       style="stroke-width:2;stroke-dasharray:none" />
+    <path
+       d="M 201 287 L 201 13.37"
+       fill="none"
+       stroke="rgb(0, 0, 0)"
+       stroke-miterlimit="10"
+       pointer-events="stroke"
+       id="path105"
+       style="stroke-width:2;stroke-dasharray:none" />
+  </g>
+  <switch
+     id="switch145">
+    <g
+       requiredFeatures="http://www.w3.org/TR/SVG11/feature#Extensibility"
+       id="g139" />
+    <a
+       transform="translate(0,-5)"
+       xlink:href="https://www.diagrams.net/doc/faq/svg-export-text-problems"
+       target="_blank"
+       id="a143">
+      <text
+         text-anchor="middle"
+         font-size="10px"
+         x="50%"
+         y="100%"
+         id="text141">Text is not SVG - cannot display</text>
+    </a>
+  </switch>
+</svg>

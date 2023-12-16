@@ -1,0 +1,168 @@
+== Regular Expressions And Catastrophic Backtracking
+
+Regular expressions can be extremely nuanced, and are often a concise and
+powerful way to express patterns in text.  This book cannot get far into an
+explanation or tutorial on regular expressions, but my title _Regular
+Expression Puzzles and AI Coding Assistants_ (February 2023, ISBN
+978-1633437814) contains a tutorial introduction in its appendix; obviously I
+recommend that title.
+
+Readers might have worked with regular expressions to a fair extent without
+having fallen into the trap of _catastrophic backtracking_.  When you do hit
+this issue, it can be a very unpleasant surprise.  Patterns which work well
+and quickly in many circumstances can start taking longer, and become worse at
+an exponential rate as the strings matched against grow longer.
+
+For this example, suppose that we have a file in which each line contains a
+non-descending list of (two digit) numbers, each separated by a space.  We'd
+like to identify all the numbers up, but not including, 90 from each line.
+Some lines will match and others will not.  In this hypothetical file format,
+each line also has a label at its start.  Let's look at an example of such a
+file (in the presentation here, some lines are wrapped because of book
+margins; in the file itself each labeled line is a physical line:
+
+.Data in file `numbers.txt`
+----
+A: 08 12 22 27 29 38 39 43 47 51 52 73 74 78 78 79 80 83 86 87 88 89 
+B: 03 04 04 05 16 18 23 26 30 31 33 34 35 36 52 61 63 68 69 72 75 80 
+    82 83 83 90 92 92 92 95 97
+C: 01 07 14 19 27 30 34 36 36 38 44 47 47 50 51 54 58 60 61 62 82 83 
+    83 95 
+D: 05 10 13 17 30 31 42 50 56 61 63 66 76 90 91 91 93 
+E: 03 21 23 24 26 31 31 31 33 36 38 38 39 42 49 55 68 79 81 
+F: 04 08 13 14 14 16 19 21 25 26 27 34 36 39 43 45 45 50 51 62 66 67 
+    71 75 79 82 88 
+G: 03 10 27 49 51 64 70 71 82 86 94 
+H: 27 31 38 42 43 43 48 50 63 72 83 87 90 92 
+I: 12 16 18 19 38 39 40 43 54 55 63 73 74 74 75 77 78 79 88 
+----
+
+As a naive version of this program, we might try defining the pattern:
+
+[source,python]
+----
+pat = re.compile(r"^(.+: )(.+ )+(?=9.)")
+----
+
+Now let's try to process this file using this pattern.  Presumably in real
+code we would take some action using the groups in the match, beyond printing
+out the fact it matched or failed.
+
+.Timing the regular expression matching
+[source,python]
+----
+>>> from time import monotonic
+>>> for line in open("data/numbers.txt"):
+...     start = monotonic()
+...     if match := re.search(pat, line):
+...         print(f"Matched line {line.split(':')[0]} "
+...               f"in {monotonic()-start:0.3f} seconds")
+...     else:
+...         print(f"Fail on line {line.split(':')[0]} "
+...               f"in {monotonic()-start:0.3f} seconds")
+...
+Fail on line A in 0.226 seconds
+Matched line B in 0.000 seconds
+Matched line C in 0.000 seconds
+Matched line D in 0.000 seconds
+Fail on line E in 0.026 seconds
+Fail on line F in 6.738 seconds
+Matched line G in 0.000 seconds
+Matched line H in 0.000 seconds
+Fail on line I in 0.025 seconds
+----
+
+We can notice a few things.  In the first place, the actual matches always
+take little time (less than a millisecond), while most failures take a
+moderate fraction of a second.  Except in that case of line F which took
+almost 7 seconds.  It may not be obvious, but in fact if line F had one more
+number less than 90, it would take twice as long. And one more number after
+that, another doubling.  Exponential behavior gets bad quickly.
+
+[NOTE]
+.Visualizing backtracking
+====
+Understanding what regular expression engines are doing can certainly be
+confusing.  In particular, NFAs (non-deteministic finite automata) that
+perform backtracking match in ways that are not immediately intuitive.  Let's
+look at a simpler and non-catastrophic example, step by step (in Figure 5.2):
+
+.Matching thousands of a comma separated longer number
+image::images/backtrack.png[]
+
+We might have a long number string that uses commas to separate at the
+thousands, millions, billions, etc. according to a Western convention of
+grouping by three digits.  The pattern `r"\d,\d+$"` should satisfy this.
+
+In the illustration, characters and regex subpatterns that match appear
+underlined and with green background. Characters and regex subpatterns that
+fail appear overlined and with red background.
+
+In order to match, the regex engine scans forward to find a digit, then expects
+a comma to follow.  When that fails, it abandons the partial match, and scans
+again for a later digit.  Once it finds a digit-comma sequence, it looks for
+repeated digits.  Initially, it finds a subsequence of the match, but fails
+when the end-of-string is not reached.  So back to scanning for the initial
+digit again, _giving back_ part of the match.
+====
+
+Let's think about what is happening in the number sequences example.  Since
+the subpattern `r"(.+ )+"` can actually match any characters, it first tries
+to match the entire string, then finding no lookahead of `r"(?=9.)"` it
+_backtracks_ to consider a bit less.  Perhaps after that backtracking, it
+finds that the next unmatched characters are `"9."`.  If not, it tries
+backtracking more as the _one-or-more_ quantifier allows taking fewer
+repetitions.  However, after each backtracking, the pattern tries to search
+forward with more repetitions, keeping the place of the last backtrack.  When
+that doesn't succeed, we unwind the tail, and backtrack more on the head.
+
+In a manner similar to the famous Tower of Hanoi puzzle
+(https://en.wikipedia.org/wiki/Tower_of_Hanoi), every possible state of head
+versus tail needs to be explored before the pattern can ultimately fail.  One
+might have an intuition that the problem can be solved by using a non-greedy
+repeating group. Intuitively, it feels like maybe the pattern will try to
+backtrack less hard if we aren't greedy in matching as much as possible with
+the `+`.  However, if we set the pattern to `r"^(.+: )(.+? )+(?=9.)"`, the
+time actually gets a little bit worse (about 10 seconds on my machine; but
+exponential increase with length either way).  If you think again about the
+problem, you'll realize that matching _as-little-as-possible_ instead of
+_as-much-as-possible_ doesn't actually prevent backtracking since a non-match
+overall remains "not possible" for the regex engine.  The same possibility
+space still needs to be explored.
+
+In this exact problem, there is actually an easy solution.  If we use the
+pattern `r"^(.+: )(\d+? )+(?=9\d)"`, all the times become negligible.  We
+match _some digits_ followed by space rather than _any sequence including
+space_.  However, most of the time when you hit this problem it is not as
+simple as the example.  Rather, the most typical situation is when you
+consider alternative sub-patterns but do not realize that they can sometimes
+actually match the same strings (which is effectively what we did with the
+`(.+ )` in which the dot can also be a space.
+
+The general form of the "overlapping-alternatives" problem is
+(meta-syntactically) [.code]``(«pat1»|«pat2»|«pat3»)+`` where each of the
+patterns might themselves be complex and not make it obvious they can match
+the same thing.  As a simple example, consider a subpattern like
+[.code]``\b(a\S*|\S*f\S*|\S*z)\b``; that is: words that start with "a", words
+that have an "f" in the middle, and words that end with "z".  Writing it in
+English it's easy to see that "alferez" (a high-ranking official in medieval
+Iberia) matches every alternative.  If the string contains many repetitions of
+that word, a full match would backtrack across all the options.
+
+'''
+
+There is not one completely general solution to these kinds of problems or
+mistakes.  Sometimes a lookahead for an easier-to-match but less specific
+pattern can precede the real search and allow it to fail quickly.  For example,
+in the current goal, we might simply generically assert a space-9 occurs
+somewhere before really matching: `^(?=.* 9)(.+: )(.+ )+(?=9\d)`.  This
+produces the correct answers and match groups, but always in a few microseconds
+for each line.
+
+In Python 3.11, a very nice new feature was introduced to the `re` module.
+Actually, two closely related features: possessive quantifiers and atomic
+groups.  In both cases, the meaning is "match or fail once, but don't
+backtrack."  Despite the related purpose of these constructs, it's not obvious
+that they lend themselves to the current goal.  But becoming aware of them
+will benefit you in rewriting many problem patterns.
+

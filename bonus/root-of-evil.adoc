@@ -1,0 +1,4 @@
+== Premature (or false) optimization of concurrency 
+
+(sometimes single-threaded is all you need)
+

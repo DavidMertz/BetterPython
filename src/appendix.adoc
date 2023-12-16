@@ -1,0 +1,202 @@
+:chapter!: 
+:sectnums!:
+:figure-caption: Figure {chapter}.
+:listing-caption!:
+:table-caption: Table {chapter}.
+:sectnumoffset: 0
+:leveloffset: 1
+
+= Appendix: Topics For Other Books
+
+There are, of course, many domains of Python programming in which you might
+make mistakes, or face tradeoffs.  Not all such topics can fit within this
+book, but those not touched on are not necessarily less important.  For the
+most part, those topics not addressed are simply big enough to warrant their
+own full books.
+
+== Test Driven Development
+
+Good software development practice should *always* include extensive tests.
+There is a great amount of detail, and sometimes subtlety, to how to do tests
+right.  But the biggest mistake, and the far most common one I've seen in
+real-life code bases is simply not to have tests at all.  Only barely less bad
+than tests not existing, is to have test suites that have not been maintained.
+It is always difficult and painful to encounter production code in which tests
+are only run occasionally and erratically, and developers just live with an
+assumption that most tests will fail.  Usually when you see this, it is far
+from obvious which of the failing tests might once have succeeded, and which
+were never completed or functional in the first place.
+
+A good test suite should be a barrier placed before every code merge.  Either
+upon every push, or upon every merge (at least to production branches), CI/CD
+(continuous integration/continuous development) tests should be run by
+automated means.  For more time consuming tests, scheduling them as a nightly
+or weekly can also be appropriate; by all means, though, such tests should be
+required to run and pass before code can enter production use.
+
+Whether or not development is strictly TDD (test driven development) is a
+subject of reasonable debate.  However one comes down in that debate,
+developers should _always_ simply assume that untested code is broken code.
+Of course, the advice of these few paragraphs applies equally to every
+programming language, and is not specific to Python.
+
+Within Python itself, my advice is to always use pytest
+(https://docs.pytest.org/en/7.3.x/) rather than the standard library
+`unittest`.  Pytest supports `unittest` suites in a backwards compatible way,
+and provides an enormously better syntax, more capabilities, and is simply
+more Pythonic overall.  The third-party nose2
+(https://docs.nose2.io/en/latest/) is also not a terrible choice, but
+generally I recommend pytest over nose2.  The standard library `doctest`
+module is also very useful for the kinds of tests that are easily expressed as
+docstrings (which is surprisingly many, and providing them is enormously
+helpful to future maintainers).
+
+== Concurrency
+
+At some point during development of this book, I wanted to discuss a number of
+concurrency pitfalls and tradeoffs.  It's a big topic though, too big for a
+chapter or two of this moderately sized book to treat adequately.  The fact
+that this is not the book for discussion of concurrency does not diminish the
+importance of the topic, nor suggest that the choices you make are not subject
+to pitfalls and tradeoffs.
+
+Within Python itself, there are three main approaches to concurrency.
+Python's standard library has a `threading` module to work with threads.
+Threads are famously subject to gotchas like deadlocks, race conditions,
+priority inversion, data structure corruption, and other glitches.  Moreover,
+within pure-Python, threading does not enable CPU parallelism because of the
+infamous GIL (global interpreter lock).  That said, many third-party modules
+"release the GIL" and allow true parallelism.
+
+Python's standard library also contains the `multiprocessing` module, which is
+largely similar in API to `threading`, but works with processes rather than
+threads.  This module provides a means of running parallel tasks on multiple
+CPU cores, but is also constrained by not being able to share data directly
+among processes and in being "heavier weight."  In general, in order
+to communicate, processes require message passing, usually by means of pipes
+and queues (which are available in the `multiprocessing` module).
+
+A useful and higher-level abstraction for both threading and multi-processing
+is the `concurrent.futures` module of the standard library.  Many problems can
+be more easily and more safely expressed using the "futures" abstraction, and
+where possible concurrency is easier using this mechanism.
+
+A third abstraction in Python for concurrency is asynchronous programming with
+coroutines.  This is supported via the `async` and `await` keywords, and is
+managed by the `asyncio` standard library module, or by third-party async
+event loops such as uvloop (https://uvloop.readthedocs.io/), Trio
+(https://trio.readthedocs.io/en/stable/), Curio
+(https://curio.readthedocs.io/en/latest/), or Twisted (https://twisted.org/).
+The general idea behind coroutines is that async functions can _yield_ control
+in the middle of their operations, allowing an event loop to give attention to
+other coroutines within the same thread and process.  This is typically useful
+when operations are I/O-bound (since I/O is generally several orders of
+magnitude slower than CPU-bound computation).
+
+The official Python documentation contains a good discussion of many of the
+tradeoffs among different approaches to concurrency (see
+https://docs.python.org/3/library/concurrency.html to get started).
+
+== Packaging
+
+A large part of the Python ecosystem is about packaging software for
+distribution.  Actually, pretty much the same is true of _every_ programming
+language.  When you write software, whether executables, libraries, or other
+systems, you usually wish to share your work with other users and developers.
+
+For some newer languages than Python, the design of the language itself was
+simultaneous with the design of its packaging system.  So, for example, users
+of the Go programming language will use `go get ...` to install packages.
+Users of Rust will use `cargo` and `rustup`.  In Julia, it is a combination of
+`using Pkg; Pkg.add(...)`.  In R, it's generally always
+`install.packages(...)`. For these languages, there is one and only one way
+install a package, and pretty much exactly one way to publish the packages or
+tools you have created.  Other languages like Ruby have mostly congealed
+around `gem`, and JavaScript is split between `npm` and `yarn`, but the two
+are _mostly_ compatible.
+
+Python is not as old as C, or Fortran, or even Perl, Bash, Haskell, or
+Forth.  All of those have, arguably, a greater disarray around packaging than
+Python does.  But Python is _pretty old_, having started in 1991, and going
+through numerous not-quite-compatible packaging and installation systems over
+that time, while starting relatively late on putting serious effort into this
+aspect.  Over the last 5-10 years, Python packaging has become solid and
+relatively stable, but a number of competing tools remain, as do a number of
+package formats.  
+
+Wheels are supported and endorsed by the Python Packaging Authority
+(https://www.pypa.io/en/latest/), but so are _sdist_ archives for source-only
+packages.  Numerious tools for creating wheels are largely, but not entirely,
+compatible with each other.  Conda packages use a different format and a
+different build system, but allow completely non-Python packages to be
+created, distributed, and installed.  A large number of tools allow creation
+of platform-specific executables for Python, including often the native
+packaging system of operating system distributions.  Moreover, especially with
+so much software being deployed in "cloud-native" or at least "cloud-centric"
+ways now, containerization, such as with Docker and Kubernetes, have become a
+popular alternative approach as well.
+
+This book simply does not attempt to address software packaging, but rather
+recommends that you read some of the excellent online material on the topic,
+starting with: https://packaging.python.org/en/latest/overview.
+
+== Type Checking
+
+On top of the mostly-orthogonal nature of type-checking mistakes and the
+conceptual mistakes addressed in this book, the use of type checking and its
+associated tools is somewhat divisive among Python developers.  I do not
+hesitate to be opinionated in this book about many things, but I have chosen
+not to weigh in on the virtues and drawbacks of using or adding extensive type
+annotations in Python codebases.  There are many excellent books and other
+resources, that delve into this topic, and these debates, in great detail.
+
+The Python documentation on type hints is a good place to start if this topic
+interests you: https://docs.python.org/3/library/typing.html.  The mypy
+project (https://mypy.readthedocs.io/) is the tool closest to an "official"
+type-checking tool for Python. The Pyre project (https://pyre-check.org/) is
+popular type-checking tool, and is especially useful for large codebases.
+Pyright (https://microsoft.github.io/pyright) and Pytype
+(https://google.github.io/pytype/) likewise serve similar purposes.  The
+PyCharm IDE (https://www.jetbrains.com/pycharm/) has excellent support for
+type checking and type inference, and is worth considering if you are looking
+for a Python IDE.
+
+== Numeric And Data Frame Libraries
+
+At the heart of much of the numeric computation performed in Python, is the
+library NumPy (https://numpy.org/).  NumPy provides a powerful and efficient
+multi-dimensional array type, and a large number of functions for operating on
+these arrays.  NumPy is developed in C, and a bit for Fortran, but is
+explicitly a Python library that cannot be used outside of Python.  The idioms
+used for vectorized computation in NumPy are often quite different from those
+used in "native Python" and a number of books and articles have been and will
+be written on its idioms.
+
+For purpose of leaving NumPy best practices out of this book, it's sufficient
+to note that those best practices are generally different from those used in
+"native Python."  In many ways, learning NumPy is like learning a
+domain-specific language (DSL) for numeric computation that resides _within_
+Python.
+
+Tensor libraries such as TensorFlow (https://www.tensorflow.org/), PyTorch
+(https://pytorch.org/), CuPy (https://cupy.dev/), and JAX
+(https://jax.readthedocs.io) borrow many concepts from NumPy, but are
+reimplemented in C++ and CUDA, and are often used for machine learning
+applications. Probably even more than with NumPy, using these Python libraries
+is effectively using DSLs inside of Python code (not strictly syntactically
+so, but in feel, yes).
+
+A powerful abstraction for working with tabular data is _data frames_.  This
+concept was popularized by the R programming language, and is mostly widely
+used in Python via the Pandas library (https://pandas.pydata.org/). Pandas is
+itself is built on top of NumPy.  Other libraries, such as Polars
+(https://www.pola.rs/) and RAPIDS (https://rapids.ai/) via its GPU-accelerated
+cuDF library, provide similar functionality, and some advantages over Pandas.
+
+As with NumPy, using Pandas and other data frame libraries requires quite
+different idioms than those used in "native Python."  In particular, these
+libraries very commonly use "method chaining" or "fluent interfaces" to
+express intentions.  This style is quite powerful and expressive, and is the
+topic of a great many books (e.g. _Pandas for Everyone: Python Data Analysis,
+2nd edition_, by Daniel Y Chen, ISBN-13: 9780137891054), but is omitted from 
+this one.

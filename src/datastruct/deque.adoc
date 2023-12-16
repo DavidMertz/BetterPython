@@ -1,0 +1,180 @@
+== `collections.deque`
+
+A deque is a thread-safe generalization of stacks and queues.  That is to say,
+that while a `collections.deque` has almost the same API as does the built-in
+`list`, it adds `.*left()` versons of several methods of lists.  Crucially,
+even though lists _can_ do these same things—for example, `list.pop(0)` does
+the same thing as `deque.popleft()`, and `list.insert(0, x)` does the same
+thing as `deque.appendleft()`—a deque does them _efficiently_.  Both FIFO
+(first in, first out) and LIFO (last in, first out) operations work well with
+deques.
+
+In the later chapter _Misusing Data Structures_, the first two sections treat
+situations in which ill-advised uses of lists can have quadratic complexity
+(see the note in the first section of _The A Grab Bag Of Python Gotchas
+Programming Language_ and https://en.wikipedia.org/wiki/Big_O_notation for
+discussion of "quadratic").  This section forshadows those discussions.
+
+Underneath the implementation of `collection.deque` is a _doubly linked list_
+rather than an _array of references_ (as with `list`).  This makes appending
+or popping from both ends efficient, but it also makes indexing less efficient
+than on lists, and slices are unavailable (because providing them would
+falsely imply efficiency in the eyes of the `deque` designer, Raymond
+Hettinger).  However, `deque` provides an interesting `.rotate()` method that
+lists lack (also because they are inefficient there).  Neither `deque` nor
+`list` is a "pure win", but rather they provide a tradeoff.  The complexity of
+some common operations is presented in Table 6.1.
+
+.Efficiency of common operations on deque and list
+[%header,format=dsv]
+|===
+Operation:deque:list
+Indexing at a position (`stuff[p]`):O(N):O(1)
+Popping/appending item at left side:O(1):O(N)
+Popping/appending item at right side:O(1):O(1) amortized
+Inserting/deleting from middle:O(N):O(N)
+|===
+
+
+For this section and the few around it, I present the solution (i.e., a
+Pythonic example) first, then the mistake.
+
+=== The Solution
+
+An example given in the Python documentation
+(https://docs.python.org/3/library/collections.html) shows using a deque for a
+moving average.  This is a good, simple case where we'd like to be able to
+append to one end and pop from the other.  Astute readers will notice that for
+the narrow task of the script shown, we do not actually need a collection at
+all; imagine, however, that other operations are also performed within the
+script and that you hence need the concrete collection rather than only the
+total.
+
+.Source code of `code/moving-average-deque`
+[source,python]
+----
+#!/usr/bin/env python
+from sys import stdin, argv
+from collections import deque
+
+window = int(argv[1]) if len(argv) > 1 else 5
+nums = deque()
+
+# Pre-populate deque with first window of numbers
+for n, num in zip(range(window), stdin):
+    nums.append(int(num.rstrip()))
+
+# Calculate initial sum and mean
+total = sum(nums)
+print(total/window)
+
+# For each new number read, print the moving average
+for num in stdin:
+    total -= nums.popleft()
+    nums.append(int(num.rstrip()))
+    total += nums[-1]
+    print(total/window)
+----
+
+Using this utility is simple:
+
+[source,shell]
+----
+[BetterPython]$ echo "4 6 2 1 3 10 11 35 32" | 
+                    tr ' ' '\n' |                  # (1)
+                    moving-average-deque
+3.2
+4.4
+5.4
+12.0
+18.2
+----
+
+(1) The `tr` shell utility here converts spaces to newlines.
+
+=== The Mistake
+
+You _could_ implement this program using lists with only a few chacters
+difference, and the utility would become dramatically worse.
+
+.Source code of `code/moving-average-list`
+[source,python]
+----
+#!/usr/bin/env python
+from sys import stdin, argv
+
+window = int(argv[1]) if len(argv) > 1 else 5
+nums = []
+
+# Pre-populate deque with first window of numbers
+for n, num in zip(range(window), stdin):
+    nums.append(int(num.rstrip()))
+
+# Calculate initial sum and mean
+total = sum(nums)
+print(total/window)
+
+# For each new number read, print the moving average
+for num in stdin:
+    total -= nums.pop(0)
+    nums.append(int(num.rstrip()))
+    total += nums[-1]
+    print(total/window)
+----
+
+For small inputs, this is not important, and the behavior is the same:
+
+[source,shell]
+----
+[BetterPython]$ echo "4 6 2 1 3 10 11 35 32" |
+                    tr ' ' '\n' |
+                    moving-average-list
+3.2
+4.4
+5.4
+12.0
+18.2
+----
+
+The 4-line script `numbers` is available at the book website, as is
+`moving-average-deque`. The argument to `numbers` is the number of numbers in
+the [1, 1000] interval to generate randomly.
+
+[source,shell]
+----
+% numbers 7 | moving-average-list
+510.0
+571.2
+670.8
+----
+
+However, looking at a larger window and more data, we notice an important
+difference in the two implementations of moving average:
+
+[source,shell]
+----
+[BetterPython]$ time numbers 1_000_000 |         # (1)
+                    moving-average-deque 100_000 >/dev/null
+
+real    0m0.869s
+
+[BetterPython]$ time numbers 1_000_000 | 
+                    moving-average-list 100_000 >/dev/null
+
+real    0m18.025s
+----
+
+(1) The Unix-isms of `time` and `/dev/null` are incidental; we just want to
+time the script, but don't care about output.
+
+Increasing efficiency by 20x is wonderful, of course.  Along with it though,
+we get thread safety, which is important in a context of queues and stacks,
+very often.  When, for example, we pop a value from a collection, a Python
+`list` does not guarantee that two threads don't pop the same item, whereas a
+`deque` does.  When you write multi-threaded code, you need to think carefully
+about whether the data strucures shared among threads enables deadlocks, race
+conditions, and other concurrency pitfalls; picking the right data structure
+does not eliminate these concerns, but picking the wrong one almost guarantees
+them. However, broader concerns around concurrency are outside the scope of
+this book, but the appendix, _Topics for Other Books_ provides a very brief
+recap of the Python concurrency ecosystem.

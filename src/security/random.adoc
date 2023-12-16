@@ -1,0 +1,185 @@
+== Reproducible Random Distributions
+
+The last section could possibly have left readers with a mistaken impression,
+if read hastily.  True randomness is a valuable feature for cryptographic and
+security concerns.  However, for equally many _other_ purposes, cryptographic
+randomness is specifically _not_ what we want (and it is a mistake to use it).
+
+As well as offering a reasonably large number random distribution, `random`
+has an essential feature that `secrets` in its nature never can:
+reproducibility.  Distributions provided include `random.random()` (uniform
+over interval `[0.0, 1.0)`); `random.uniform(a, b)` (uniform over interval
+`[a, b]`; `random.triangular()`, `random.betavariate()`,
+`random.expovariate()`, `random.gammavariate()`, `random.gauss()`,
+`random.lognormvariate()`, `random.vonmisesvariate()`,
+`random.paretovariate()`, and `random.weibullvariate()`.  As well `random`
+provides other useful selectors such as `random.randint()`,
+`random.randrange()`, `random.randbytes()`, `random.choice()`,
+`random.choices()`, and `random.sample()` (the last two varying by whether
+they are take with or without replacement). 
+
+The last paragraph listed a large number of distributions.  Don't worry if you
+don't know what most of them do; those people who work in domains that need
+them understand why they need them.  For a variety of scientific and numeric
+purposes each of these is useful, and few are present in `secrets`.  However,
+with algebraic manipulation, you could, in principle, obtain each of those
+numeric distributions from calls to, for example, `secrets.randbelow(a)` which
+picks an integer uniformly from the interval `[0, a)`.  
+
+More fundamentally, `random` contains `random.seed()`,
+`random.setstate()` and `random.getstate()`.  This enables _reproducibility_
+of a sequence of random values.  For example:
+
+.Reproducible random choice from SOWPODS wordlist
+[source,python]
+----
+>>> import random, secrets
+>>> words = [w.strip() for w in open('data/sowpods')]
+>>> random.seed('reproducible-abc123')
+>>> for _ in range(9_999_999):
+...     random.choice(words)
+...
+>>> random.choice(words)
+'spekboom'
+>>> for _ in range(secrets.randbelow(1_000_000)):  # (1)
+...     random.choice(words)
+...
+>>> random.choice(words)                           # (2)
+'remotivations'
+>>> random.seed('reproducible-abc123')
+>>> for _ in range(9_999_999):
+...     random.choice(words)
+...
+>>> random.choice(words)
+'spekboom'
+----
+
+(1) This loop performs a genuinely unknowable number of steps through the
+Mersenne Twister generator
+
+(2) This choice of "remotivations" will not occur if I run the code again, or
+if you run it.  However, "spekboom" will remain stable if you use my same
+wordlist.
+
+Not only was "spekboom" (a South African succulent commonly kept as a
+houseplant) the ten millionth word chosen following initialization of the MT
+generator with the seed I used, but also the prior nine million, nine-hundred
+ninety-nine thousand, nine-hundred ninety-nine words were the same (although
+not displayed in the output).
+
+If we wish to save the state of the generator after these 10 million choices,
+that is easy to do.
+
+.Saving the state of a Mersenne Twister generator
+[source,python]
+----
+>>> mt_state = random.getstate()
+>>> print(f"{len(mt_state[1])} numbers: {mt_state[1][:4] + ('...',)}")
+625 numbers: (3974703532, 1779565825, 1928569991, 1391398096, '...')
+>>> random.choice(words)
+'labdacisms'
+>>> for _ in range(secrets.randbelow(1_000_000)):  # (1)
+...     random.choice(words)
+...
+>>> random.choice(words)                           # (2)
+'carnotite'
+>>> random.setstate(mt_state)
+>>> random.choice(words)
+'labdacisms'
+----
+
+(1) Again, an unknowable number of steps through the Mersenne Twister
+generator
+
+(2) The choice of "carnotite" is also a one-off occurrance.  Or at least a
+1/267,752 chance of happening.
+
+Every time the state is reset to `mt_state`, the very next word chosen will be
+"labdacisms" (a phonological shift in which /l/ is substituted with /r/).
+
+=== Why Do We Want Repeatability?
+
+We've seen a bit of the API for using seeds and state in `random`, but the
+reason we want that repeatability may remain unclear.  There are a couple
+clear reasons to want this.
+
+Just as a quick reminder, even though the above example worked with
+`random.choice` from a word list, simply to create memorable outputs, the same
+reproducibility and APIs work the same way from drawing from any of the
+numeric distributions as well.
+
+Perhaps the most obvious need for "repeatable randomness" is in creating unit
+tests or functional tests of our software.  We would like to assure that our
+software—for example, a long running webserver—given a particular sequence of
+inputs continues to behave the same way.
+
+For 10 million inputs, we could probably save those in a data file without
+outrageous waste on modern computers.  But if it were 10 billion inputs,
+saving a sequence of inputs is enormously wasteful when one seed of a few
+character string, or one state of 625 numbers, would suffice.
+
+Another common related need is when you have a complex process that you
+believe you can optimize, but want to assure identical behavior is retained.
+As a contrived example, we have a function `blackbox()` that takes a string and
+an iterable of integers as arguments, and returns a permutation of that
+string.  Again, for short iterables, simply saving them as static data is
+fine, but for long ones repeatability is relevant.
+
+Let's run the existing implementation:
+
+.An inefficient but important `blackbox()` function
+[source,python]
+----
+from typing import Iterable
+def blackbox(s: str, nums: Iterable[int]) -> str:
+    # some non-optimized computation
+    return new_s
+----
+
+Observing the behavior of `blackbox()` we find:
+
+[source,python]
+----
+>>> def test_sequence(seed="abc", count=10, floor=0, ceil=100):
+...     random.seed(seed)
+...     for _ in range(count):
+...         yield random.randint(floor, ceil)
+...
+>>> s = "Mary had a little lamb!"
+>>> blackbox(s, [5, 9999, 34, -65, 4, 2])
+'Mryaa hd a itltle lamb!'
+>>> blackbox(s, test_sequence(count=10_000_000))
+'aMt!r ahbma i  letllyda'
+>>> %timeit blackbox(s, test_sequence(count=10_000_000))
+28 s ± 195 ms per loop (mean ± std. dev. of 7 runs, 1 loop each)
+----
+
+We could create other test sequences of varying lengths, with varying seeds,
+and with varying floor and ceiling of the integers produced.  But across a
+reasonable collection of such configurations, we would like our new
+`blackbox_fast()` function to produce the same outputs as a previous slow
+implementation.
+
+.Examining implementation of `blackbox_fast()`
+[source,python]
+----
+>>> blackbox_fast(s, [5, 9999, 34, -65, 4, 2])
+'Mryaa hd a itltle lamb!'
+>>> (blackbox(s, test_sequence(count=10_000_000)) ==
+...  blackbox_fast(s, test_sequence(count=10_000_000)))
+True
+>>> (blackbox(s, test_sequence(seed="xyz", count=1_000_000)) ==
+...  blackbox_fast(s, test_sequence(seed="xyz", count=1_000_000)))
+True
+>>> (blackbox(s, test_sequence(count=1000, ceil=500)) ==
+...  blackbox_fast(s, test_sequence(count=1000, ceil=500)))
+True
+>>> %timeit blackbox_fast(s, test_sequence(count=10_000_000))
+3.6 s ± 36 ms per loop (mean ± std. dev. of 7 runs, 1 loop each)
+----
+
+We can see that the new implementation is considerably faster, while also
+remaining consistent in behavior across our range of test cases.  Constructing
+a collection of such tests over large iterables would be impractical without
+"deterministic randomness."
+

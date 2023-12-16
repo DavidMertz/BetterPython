@@ -1,0 +1,165 @@
+==  Optional Argument `key` To `.sort()` And `sorted()`
+
+Using the optional `key` argument to `sorted()` and `list.sort()` can make
+your code cleaner, faster, and more robust.  Failing to use a `key` function,
+where relevant is a common mistake.
+
+The requirements for sorting collections or iterables in Python is suprisingly
+minimal.  Each object must be able to perform a _less than_ comparison with
+the objects adjacent to it in a sequence. 
+
+[NOTE]
+.The pointy edges of sorting
+====
+Not all objects can be compared for less-than inequality, which can
+occasionally have the surprising effect that the sortability of a sequence
+depends on the original order of elements.  
+
+While this can possibly occur, far more often sorting heterogeneous iterables
+simply fails with some variety of `TypeError`.  Still, we _can_ see situations
+like this:
+
+[source,python]
+----
+>>> sorted([5, Strange(), 1, Strange(), 2+3j])
+[1, 5, StrangeObject, StrangeObject, (2+3j)]
+>>> sorted([5, Strange(), 2+3j, Strange(), 1])
+[1, 5, StrangeObject, StrangeObject, (2+3j)]
+>>> sorted([5, Strange(), 1, 2+3j, Strange()])
+Traceback (most recent call last):
+[...]
+TypeError: '<' not supported between instances of 'complex' and 'int'
+----
+
+To really understand when this will succeed and when it will fail, for a given
+sequence of objects that are partially incompatible, you need to understand
+the details of the Timsort algorithm (https://en.wikipedia.org/wiki/Timsort).
+Doing so is a worthwhile goal, but is not required to understand anything in
+this book.
+====
+
+Given that all we need is less-than inquality, providing sortability of custom
+objects is extremely easy to make available.  For example:
+
+.Creating custom objects that can be sorted
+[source,python]
+----
+>>> class Thing:
+...     def __init__(self, value):
+...         self.value = value
+...     def __lt__(self, other):
+...         return self.value < other.value
+...     def __repr__(self):
+...         return f"Thing({self.value})"
+...
+>>> sorted([Thing(2), Thing(-17), Thing(55), Thing(7)])
+[Thing(-17), Thing(2), Thing(7), Thing(55)]
+>>> things = [Thing(2), Thing(-17), Thing(55), Thing(7)]
+>>> things.sort()
+>>> things
+[Thing(-17), Thing(2), Thing(7), Thing(55)]
+----
+
+A more useful "thing" would presumably have additional attributes and methods,
+but this suffices to show the scaffolding needed (the
++++<code>.__repr__()</code>+++ is optional, but it makes for a more attractive
+display).
+
+[NOTE]
+.Iterables are sortable (if the corresponding concrete collection is)
+====
+Python really does emphasize iterables over concrete collections wherever they
+are feasible to use.  The result of sorting is still a concrete collection,
+but the iterable need not have started out as such.  For example:
+
+[source,python]
+----
+>>> from random import randint
+>>> def make_things():
+...     for _ in range(5):
+...         yield Thing(randint(1, 1000))          # (1)
+...
+>>> sorted(make_things())
+[Thing(544), Thing(651), Thing(666), Thing(799), Thing(920)]
+----
+
+(1) The presence of `yield` makes this a _generator function_.
+
+====
+
+If a developer is not aware of the optional keyword argument `key` which can be
+passed to `sorted()` or to `list.sort()`, the code they write is likely to
+perform inefficiently or just plain wrongly.  In particular, such flawed code
+can sometimes wind up sorting on a basis other than the sort order that is
+useful for the objects involved.
+
+For example, suppose we wanted to sort "Things" not based on their numeric
+order, but rather based on their numeric order within a ring of a given
+modulus (called ℤ_n).  A first inclination might be to subclass `Thing` to have
+this behavior.
+
+.Unecessary use of subclass merely for sort order
+[source,python]
+----
+>>> class ModThing(Thing):
+...     def __init__(self, value: int, mod: int=7):
+...         self.value = value
+...         self._mod = mod
+...     def __lt__(self, other):
+...         return self.value % self._mod < other.value % other._mod
+...
+...
+>>> sorted([ModThing(2), ModThing(-17), ModThing(55), ModThing(7)])
+[Thing(7), Thing(2), Thing(-17), Thing(55)]
+----
+
+There might well be additional reasons to attach the modulus to the class
+itself, but supposing we only cared about sorting, we could achieve the same
+effect more easily using:
+
+.Using `key` function in decorate-sort-undecorate sorting
+[source,python]
+----
+>>> sorted([Thing(2), Thing(-17), Thing(55), Thing(7)],
+...        key=lambda thing: thing.value % 7)
+[Thing(7), Thing(2), Thing(-17), Thing(55)]
+----
+
+Anything that can represent a consistent transformation of the underlying
+objects being sorted is suitable as a key function. The
+decorate-sort-undecorate pattern is vastly more efficient as a big-O
+complexity than using a comparison function between every pair of items.  See
+a discussion at https://en.wikipedia.org/wiki/Schwartzian_transform.  The less
+efficient comparison function idiom is still used in many other programming
+languages, and was long ago used in Python, prior to version 2.4.
+
+Lambda functions are absolutely appropriate to use in this context, even if in
+most other places a named function would serve clarity better.  But very often
+it is useful to use `operator.itemgetter` or `operator.attrgetter` as faster
+and more expressive functions than custom lambda functions.  One place we see
+this need very commonly is in manipulating deserialized JSON data, which tends
+to be highly nested.
+
+.Using `operator.itemgetter` to sort based on a `dict` key
+[source,python]
+----
+>>> from operator import itemgetter
+>>> students = [
+...     dict(name="Xian", grade="B", age=10),
+...     dict(name="Jane", grade="B", age=12),
+...     dict(name="John", grade="A", age=15)
+... ]
+>>> sorted(students, key=itemgetter('age'), reverse=True)
+[{'name': 'John', 'grade': 'A', 'age': 15}, 
+ {'name': 'Jane', 'grade': 'B', 'age': 12}, 
+ {'name': 'Xian', 'grade': 'B', 'age': 10}]
+>>> sorted(students, key=itemgetter('name'))
+[{'name': 'Jane', 'grade': 'B', 'age': 12}, 
+ {'name': 'John', 'grade': 'A', 'age': 15}, 
+ {'name': 'Xian', 'grade': 'B', 'age': 10}]
+----
+
+For data held in classes `operator.attrgetter` is very similar, but simply
+accesses the attribute that is passed as an argument for each instance being
+sorted.
+

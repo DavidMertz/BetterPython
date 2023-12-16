@@ -1,0 +1,1 @@
+== Iterating over NumPy arrays instead of vectorized operations

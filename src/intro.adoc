@@ -1,0 +1,79 @@
+= Introduction
+
+Python is a powerful, and also a reasonably opinionated, programming language.
+While there are often many ways you _could_ accomplish a task in Python, there
+is very often exactly one way you _should_ accomplish that task.  Some
+programs are considered "Pythonic," and others are not.
+
+[NOTE]
+.Being Pythonic
+====
+The slightly joking term "Pythonic" is widely used in the Python community.
+In a general way it means "reflecting good programming practices for the
+Python language."  But there is also something just slightly _ineffable_ about
+the term in a way similar to how other programmers use "fragile", "elegant",
+or "robust" in describing particular code.  You'll see the terms Pythonic and
+unpythonic quite a bit in this book.
+
+In a related bit of Pythonic humor—the language was, after all, named after
+the Monty Python comedy troupe—we often use the term "Pythonista" for
+developers who have mastered Pythonic programming.
+====
+
+To a fairly large extent being Pythonic is a goal to improve the _readability_
+of your programs so that other users and contributors can easily understand
+your intention, the behavior of the code, and indeed identify its bugs.  There
+are, as well, many times when being unpythonic leads to unexpected behavior,
+and hence harms _functionality_ in edge cases you may not have considered or
+tried out during initial usage.
+
+In this book, I am not shy in being opinionated about good Python practices.
+Throughout the discussions, I try to explain the motivations for these
+opinions, and reflect on my long experience using, teaching, and writing about
+Python.  It is a truly delightful programming language, about which I have
+sincere enthusiam.
+
+Much of what we hope for in Python code is explained by "The Zen of Python."
+
+.The Zen of Python
+[source,python]
+----
+>>> import this
+The Zen of Python, by Tim Peters
+
+Beautiful is better than ugly.
+Explicit is better than implicit.
+Simple is better than complex.
+Complex is better than complicated.
+Flat is better than nested.
+Sparse is better than dense.
+Readability counts.
+Special cases aren't special enough to break the rules.
+Although practicality beats purity.
+Errors should never pass silently.
+Unless explicitly silenced.
+In the face of ambiguity, refuse the temptation to guess.
+There should be one—and preferably only one—obvious way to do it.
+Although that way may not be obvious at first unless you're Dutch.
+Now is better than never.
+Although never is often better than *right* now.
+If the implementation is hard to explain, it's a bad idea.
+If the implementation is easy to explain, it may be a good idea.
+Namespaces are one honking great idea—let's do more of those!
+----
+
+There are many topics within the world of Python programming that are very
+important, but are not addressed in this short book.  The appendix, _Topics
+for Other Books_ gives some pointers to resources, and brief summaries of the
+the ideas I think you would do well to pursue when learning them.
+
+== About The Author
+
+David Mertz, Ph.D., has been a member of the Python community for a long time.
+About 25 years; long enough to remember what was new about Python 1.5 versus
+1.4. He has followed the development of the language closely, given keynote
+talks about many of the changes over versions, and his writing has had a
+modicum of influence on the directions Python and popular libraries for it have
+taken.  David has taught Python to scientists, developers coming from other
+languages, and to programming neophytes.
+

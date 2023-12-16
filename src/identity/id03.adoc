@@ -1,0 +1,58 @@
+== Comparing `x == None`
+
+This problem is a simple one, perhaps as a breather from many others with
+broad background information.  In Python, `None` is a _singleton_ constant.
+`True` and `False` are also unique, but in a hyper-technical sense are the
+_two_ possible instances of the `bool` class.  That is to say, there can only
+ever be one `None` during a particular excution of the Python interpreter.
+
+[NOTE]
+.Singletons and the Borg
+====
+The famous 1994 "Gang of Four" book (_Design Patterns: Elements of Reusable
+Object-Oriented Software_, by Erich Gamma, Richard Helm, Ralph Johnson, and
+John Vlissides.  ISBN0-201-63361-2) popularized the software concept of a
+"singleton."  In their case, they meant a class (in C++ or Smalltalk) that 
+can only have a single instance.
+
+Narrowly speaking, Python's `None` fulfills this definition:
+
+[source,python]
+----
+>>> type(None)
+<class 'NoneType'>
+>>> None.__class__() is None
+True
+>>> (1).__class__() is 1                   # (1)
+<>:1: SyntaxWarning: "is" with a literal. Did you mean "=="?
+False
+----
+
+(1) Warnings in Python 3.10, 3.11, and 3.12 have gotten noticeably more
+precise.  This friendly reminder is a good example.
+
+For your own classes, the "singleton pattern" is a poor choice in Python.  It
+is _possible_ to implement, yes, but to accomplish all the same goals, Alex
+Martelli's "Borg idiom" is uniformly more Pythonic.
+
+[source,python]
+----
+class Borg:
+    _the_collective = {}
+    def __init__(self):
+        self.__dict__ = self._the_collective
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__)
+----
+
+Many Borg can exist, but every attribute and method is shared between each of
+them.  `None`, however, remains properly a singleton.
+====
+
+If you ever see code using `if obj == None` you immediately know that whoever
+wrote it was a newcomer to Python, and this should be cleaned up in
+code-review.  Most linters and style checking tools will complain about this.  
+
+The correct spelling is always simply `if obj is None`.  You will make your
+colleagues happy when you write this, or when you fix it in legacy code.

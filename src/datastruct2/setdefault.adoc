@@ -1,0 +1,296 @@
+== Learn Less Common Dictionary Methods
+
+Dictionaries are a wonderful data structure that in many ways make up the
+heart of Python.  Internally, most objects, including modules, are defined
+by their dictionaries.
+
+The sometimes overlooked method `dict.get()` was discussed in a section within
+the _A Grab Bag Of Python Gotchas_ chapter, but dicts also have a few other
+methods that are often overlooked, even by experienced Python programmers.  As
+with a number of other mistakes throughout this book, the mistake here is
+simply one of ignorance or forgetfulness; the result is not usually broken
+code, but rather just code that is less fast, elegant, and expressive than it
+might be.
+
+=== The Dictionaries Defining Objects
+
+This subsection is a digression into Python's internal mechanisms.  Feel free
+to skip it for the actual pitfall; or read it to understand Python a little
+bit better.
+
+You can use Python for a long time without ever needing to think about the
+dictionaries at the heart of most non-`dict` objects. There are some
+exceptions, but many Python objects have a +++<code>.__dict__</code>+++
+attribute to store the dictionary providing its capabilities and behaviors.
+
+Let's look at a couple examples:
+
+.Module dictionaries
+[source,python]
+----
+>>> import re
+>>> type(re.__dict__)
+<class 'dict'>
+>>> for key in re.__dict__.keys():
+...     print(key, end=" ")
+...
+__name__ __doc__ __package__ __loader__ __spec__ __path__ __file__
+__cached__ __builtins__ enum _constants _parser _casefix _compiler
+functools __all__ __version__ NOFLAG ASCII A IGNORECASE I LOCALE L
+UNICODE U MULTILINE M DOTALL S VERBOSE X TEMPLATE T DEBUG RegexFlag
+error match fullmatch search sub subn split findall finditer compile
+purge template _special_chars_map escape Pattern Match _cache
+_MAXCACHE _compile _compile_repl _expand _subx copyreg _pickle Scanner
+----
+
+The various functions and constants in a module are simply its
+dictionary.  Built-in types usually use a slightly different
+dictionary-like object:
+
+.Dictionaries of basic types
+[source,python]
+----
+>>> for typ in (str, int, list, tuple, dict):
+...     print(typ, type(typ.__dict__))
+...
+<class 'str'> <class 'mappingproxy'>
+<class 'int'> <class 'mappingproxy'>
+<class 'list'> <class 'mappingproxy'>
+<class 'tuple'> <class 'mappingproxy'>
+<class 'dict'> <class 'mappingproxy'>
+
+>>> int.__dict__["numerator"]
+<attribute 'numerator' of 'int' objects>
+>>> (7).__class__.__dict__["numerator"]
+<attribute 'numerator' of 'int' objects>
+>>> (7).numerator
+7
+----
+
+Custom classes also continue this pattern (their instances either have
++++<code>.__dict__</code>+++ or +++<code>.__slots__</code>+++,
+depending on how they are defined.
+
+.Dictionaries defining classes (and instances)
+[source,python]
+----
+>>> class Point:
+...     def __init__(self, x, y):
+...         self.x = x
+...         self.y = y
+...     def from_origin(self):
+...         from math import sqrt
+...         return sqrt(self.x**2 + self.y**2)
+...
+>>> point = Point(3, 4)
+>>> point.from_origin()
+5.0
+>>> type(Point.__dict__)
+<class 'mappingproxy'>
+>>> type(point.__dict__)
+<class 'dict'>
+>>> Point.__dict__.keys()
+dict_keys(['__module__', '__init__', 'from_origin', '__dict__', 
+'__weakref__', '__doc__'])
+>>> point.__dict__
+{'x': 3, 'y': 4}
+----
+
+=== Back To Our Regularly Scheduled Mistake
+
+==== The Method `.setdefault()`
+
+Of all the useful methods of dictionaries, the one I personally forget the
+most often is `dict.setdefault()`.  I have written code like this
+embarrassingly often:
+
+[source,python]
+----
+>>> point = {"x": 3, "y": 4}
+>>> if 'color' in point:
+...     color = point["color"]
+... else:
+...     color = "lime green"
+...     point["color"] = color
+...
+>>> point
+{'x': 3, 'y': 4, 'color': 'lime green'}
+----
+
+All the while, I _should_ have simply written:
+
+[source,python]
+----
+>>> point = {"x": 3, "y": 4}
+>>> color = point.setdefault("color", "lime green")
+>>> color
+'lime green'
+>>> point
+{'x': 3, 'y': 4, 'color': 'lime green'}
+>>> point.setdefault("color", "brick red")
+'lime green'
+----
+
+The first version works, but it uses five lines where one would be slightly
+faster and distinctly clearer.
+
+==== The Method `.update()`
+
+The method `dict.update()` is useful to avoid writing:
+
+[source,python]
+----
+>>> from pprint import pprint
+>>> features = {
+...     "shape": "rhombus",
+...     "flavor": "vanilla",
+...     "color": "brick red"}
+>>> for key, val in features.items():
+...     point[key] = val
+...
+>>> pprint(point)
+{'color': 'brick red',
+ 'flavor': 'vanilla',
+ 'shape': 'rhombus',
+ 'x': 3,
+ 'y': 4}
+----
+
+Prior to Python 3.9, the friendlier shortcut was:
+
+[source,python]
+----
+>>> point = {"x": 3, "y": 4, "color": "chartreuse"}
+>>> point.update(features)
+>>> pprint(point)
+{'color': 'brick red',
+ 'flavor': 'vanilla',
+ 'shape': 'rhombus',
+ 'x': 3,
+ 'y': 4}
+----
+
+But with recent Python versions, even more elegant versions are:
+
+[source,python]
+----
+>>> point = {"x": 3, "y": 4, "color": "chartreuse"}
+>>> point | features                               # (1)
+{'x': 3, 'y': 4, 'color': 'brick red', 'shape': 'rhombus', 
+'flavor': 'vanilla'}
+>>> point
+{'x': 3, 'y': 4, 'color': 'chartreuse'}
+>>> point |= features                              # (2)
+>>> point
+{'x': 3, 'y': 4, 'color': 'brick red', 'shape': 'rhombus', 
+'flavor': 'vanilla'}
+----
+
+(1) Create a new dictionary merging `features` with `point`.
+
+(2) Equivalent to `point.update(features)`.
+
+==== The Methods `.pop()` And `.popitem()`
+
+The methods `dict.pop()` and `dict.popitem()` are also easy to forget, but 
+extremely useful when you need them.  The former is useful when you want to
+find and remove a specific key, the latter is useful when you want to find and
+remove and unspecified key/value pair.
+
+[source,python]
+----
+>>> point.pop("color", "gray")
+'brick red'
+>>> point.pop("color", "gray")
+'gray'
+>>> point
+{'x': 3, 'y': 4, 'shape': 'rhombus', 'flavor': 'vanilla'}
+----
+
+That is much friendlier than:
+
+[source,python]
+----
+>>> point = {'x': 3, 'y': 4, 'color': 'brick red', 
+             'shape': 'rhombus', 'flavor': 'vanilla'}
+>>> if "color" in point:
+...     color = point["color"]
+...     del point["color"]
+... else:
+...     color = "gray"
+... color
+'brick red'
+----
+
+Likewise, to get an arbitrary item in a dictionary, `dict.popitem()` is very
+quick and easy.  This is often a way to process the items within a dictionary,
+leaving an empty dictionary when processing is complete.  Since Python 3.7,
+"arbitrary" is always LIFO (last-in first-out) because dictionaries maintain
+insertion order.  Depending on your program flow, insertion order may or may
+not be obvious or reproducible; but you are guaranteed _some_ order for
+successive removal.
+
+[source,python]
+----
+>>> point = {'x': 3, 'y': 4, 'color': 'brick red', 
+             'shape': 'rhombus', 'flavor': 'vanilla'}
+>>> while point and (item := point.popitem()):
+...     print(item)
+...
+('flavor', 'vanilla')
+('shape', 'rhombus')
+('color', 'brick red')
+('y', 4)
+('x', 3)
+>>> point
+{}
+----
+
+==== Making Copies
+
+Another often overlooked method is `dict.copy()`.  However, I tend to feel
+that this method is usually properly overlooked.  The copy made by this method
+is a *shallow* copy, so any mutable values might still be changed indirectly,
+leading to subtle and hard-to-find bugs.  The chapter _Confusing Equality with
+Identity_ is primarily about exactly this kind of mistake.
+
+Most of the time, a much better place to look is `copy.deepcopy()`.  For
+example:
+
+[source,python]
+----
+>>> d1 = {"foo": [3, 4, 5], "bar": {6, 7, 8}}
+>>> d2 = d1.copy()
+>>> d2["foo"].extend([10, 11, 12])
+>>> del d2["bar"]
+>>> d1
+{'foo': [3, 4, 5, 10, 11, 12], 'bar': {8, 6, 7}}
+>>> d2
+{'foo': [3, 4, 5, 10, 11, 12]}
+----
+
+This is confusing, and pretty much a bug magnet.  Much better is:
+
+[source,python]
+----
+>>> from copy import deepcopy
+>>> d1 = {"foo": [3, 4, 5], "bar": {6, 7, 8}}
+>>> d2 = deepcopy(d1)
+>>> d2["foo"].extend([10, 11, 12])
+>>> del d2["bar"]
+>>> d1
+{'foo': [3, 4, 5], 'bar': {8, 6, 7}}
+>>> d2
+{'foo': [3, 4, 5, 10, 11, 12]}
+----
+
+'''
+
+Dictionaries are an amazingly rich data structure in Python.  As well as the
+usual efficiency that hash maps or key/value stores have in most programming
+languages, Python provides a moderate number of well chosen "enhanced"
+methods.  In principle, if dictionaries only had key/value insertion, key
+deletion, and a method to list keys, that would suffice to _do everything_ the
+underlying data structure achieves.  However, your code can be much cleaner
+and more intuitive with strategic use of the additional methods discussed.
+

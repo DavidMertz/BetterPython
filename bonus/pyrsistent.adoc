@@ -1,0 +1,6 @@
+== Consider `pyrsistent` to constrain side-effects
+
+...and non-reproducible mutation artifacts
+
+The package `pyrsistent` offers well-engineered immutable collections that can
+often replate collections in Python builtins or its standard library.

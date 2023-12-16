@@ -1,0 +1,98 @@
+== Naive Use Of Floating Point Numbers: Associativity And Distributivity
+
+It is famously easy to forget that basic algebraic operations on floating
+point numbers are neither associative nor distributive in general.  Even when
+we rule out special values like `math.inf` and `math.nan`, basic "ordinary
+numbers" only approximate Rational or Real numbers.  We can exclude infinities
+and NaNs with the function `math.isfinite()`.
+
+To put it very simply, we cannot assume in IEEE-754—whether in Python or in
+any of the other majority of programming languages that use floating point
+numbers as built-ins or standard library types—that these properties hold:
+
+.Absence of associativity and distributivity
+[source,python]
+----
+>>> from math import isfinite
+>>> a, b, c, d = 0.1, 0.2, 0.3, 0.4
+>>> isfinite(a) and isfinite(b) and isfinite(c) and isfinite(d)
+True
+>>> (a + b) + c == a + (b + c)
+False
+>>> (a + b) + d == a + (b + d)
+True
+>>> a * (b + c) == (a * b) + (a * c)
+True
+>>> c * (a + b) == (c * a) + (c * b)
+False
+----
+
+Associativity and distributivity do not _always_ fail, of course.  We see
+examples in the above code block of these properties both holding and failing,
+all with very ordinary numbers.  However, predicting exactly which series of
+operations will preserve exact equality and which will not is exceedingly
+subtle.
+
+[NOTE]
+.Remembrance of Things Past
+====
+I had already previously commented in a 2003 book that "If you think you
+_understand_ just how complex IEEE 754 math is, you are not yet aware of all
+of its subtleties."  In that ancient text, I noted that my friend, colleague,
+and erstwhile professor of numeric computing Alex Martelli had written:
+
+> Anybody who thinks he knows what he's doing when floating point is involved
+> is either naive, or Tim Peters (well, it _could be_ W. Kahan I guess).
+
+Tim Peters (after whom "Timsort", the sorting algorithm used in Python and in
+many other modern programming languages), replied:
+
+> I find it's possible to be both (wink).  But _nothing_ about fp comes 
+> easily to anyone, and even Kahan works his butt off to come up with the
+> amazing things that he does.
+
+Peters illustrated further by way of Donald Knuth (_The Art of Computer
+Programming_, Third Edition, Addison-Wesley, 1997; ISBN: 0201896842, vol. 2,
+p. 229):
+
+> Many serious mathematicians have attempted to analyze a sequence of floating
+> point operations rigorously, but found the task so formidable that they have
+> tried to be content with plausibility arguments instead.
+====
+
+The solution to this Gordian Knot, of course, is not to understand all the
+rounding errors in a computation that might consist of thousands or millions
+of floating point operations, but rather to settle for "plausible equality."
+For what it's worth, the problem gets even more tangled in the face of
+concurrency, wherein you may not even be able to predict the order in which
+operations are performed.
+
+Both Python's `math.isclose()` and NumPy's `numpy.isclose()` provide such
+plausible answers:
+
+.Approximate associativity and distributivity
+[source,python]
+----
+>>> import numpy as np
+>>> import math
+>>> math.isclose((a + b) + c, a + (b + c))
+True
+>>> np.isclose((a + b) + c, a + (b + c))
+True
+>>> math.isclose(c * (a + b), (c * a) + (c * b))
+True
+>>> np.isclose(c * (a + b), (c * a) + (c * b))
+True
+----
+
+Both `math.isclose()` and `numpy.isclose()` come with optional arguments to
+fine-tune their meanings of "closeness."  However, note that these
+corresponding functions are *not* algorithmically identical.  In fact, quoting
+the NumPy documentation:
+
+> Unlike the built-in `math.isclose`, the above equation is not symmetric
+> in `a` and `b` -- it assumes `b` is the reference value -- so that
+> `isclose(a, b)` might be different from `isclose(b, a)`.
+
+In other words, `numpy.isclose()` is also not itself commutative (the property
+of an operator in mathematics in which `A ⊕ B` is always equal to `B ⊕ A`).

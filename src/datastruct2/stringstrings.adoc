@@ -1,0 +1,177 @@
+== Strings Are Iterables Of Strings
+
+Strings in Python are strange objects.  They are incredibly useful, powerful,
+and well designed.  But they are still strange.  In many ways, strings are
+_scalar_ objects.  They are immutable and hashable, for example.  We usually
+think of a string as a _single value_, or equivalently call it _atomic_.
+
+However, at the same time, strings are iterable, and every item in their
+iteration is also a string (which is itself iterable).  This oddity often lead
+to mistakes when we wish to decompose or flatten nested data.  Sometimes in
+related contexts as well.  For example:
+
+.Naive attempt at `flatten()` function
+[source,python]
+----
+>>> def flatten(o, items=[]):
+...     try:
+...         for part in o:
+...             flatten(part, items)
+...     except TypeError:
+...         items.append(o)
+...     return items
+----
+
+If you prefer LBYL (_look before you leap_) to EAFP (_easier to ask
+forgiveness than permission_) you could write this as:
+
+.Naive attempt at `flatten2()` function
+[source,python]
+----
+>>> from collections.abc import Iterable
+>>> def flatten2(o, items=[]):
+...     if isinstance(o, Iterable):
+...         for part in o:
+...             flatten2(part, items)
+...     else:
+...         items.append(o)
+...     return items
+----
+
+Either way, these are perfectly sensible functions to take a nested data
+structure with scalar leaves, and return a linear sequence from them.  These
+first two functions return a concrete list, but they could equally well be
+written as a generator function such as:
+
+.Naive attempt at `flatten_gen` function
+[source,python]
+----
+>>> def flatten_gen(o):
+...     if isinstance(o, Iterable):
+...         for part in o:
+...             yield from flatten_gen(part)
+...     else:
+...         yield o
+----
+
+Using this function often produces what we'd like:
+
+[source,python]
+----
+>>> nested = [
+...     (1, 2, 3),
+...     {(4, 5, 6), 7, 8, frozenset([9, 10, 11])},
+...     [[[12, 13], [14, 15], 16], 17, 18]
+... ]
+>>> flatten(nested, [])                            # (1)
+[1, 2, 3, 8, 9, 10, 11, 4, 5, 6, 7, 12, 13, 14, 15, 16, 17, 18]
+>>> flatten2(nested, [])                           # (1)
+[1, 2, 3, 8, 9, 10, 11, 4, 5, 6, 7, 12, 13, 14, 15, 16, 17, 18]
+>>> for item in flatten_gen(nested):
+...     print(item, end=" ")
+... print()
+1 2 3 8 9 10 11 4 5 6 7 12 13 14 15 16 17 18
+----
+
+(1) To avoid mutable-default issues, pass in initial `items` to expand.
+
+In the examples, the iterable but unordered set in the middle happens
+to yield the `frozenset` first, although it is listed last in the
+source code.  You are given no guarantee about whether that accident
+will hold true in a different Python version, or even on a different
+machine or different run.
+
+This all breaks down terribly when strings are involved. Because strings are
+iterable, every item in their iteration is also a string (which is itself
+iterable).
+
+.How strings break recursion
+[source,python]
+----
+>>> import sys
+>>> sys.setrecursionlimit(10)                      # (1)
+>>> flatten(nested, [])
+[1, 2, 3, 8, 9, 10, 11, 4, 5, 6, 7, 12, 13, 14, 15, 16, 17, 18]
+>>> flatten('abc', [])
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+  File "<stdin>", line 4, in flatten
+  File "<stdin>", line 4, in flatten
+  File "<stdin>", line 4, in flatten
+  [Previous line repeated 6 more times]            # (2)
+RecursionError: maximum recursion depth exceeded
+----
+
+(1) The same breakage occurs with default 1000 depth, it just shows more
+lines of traceback before doing so.
+
+(2) Recent `python` shells simplify many tracebacks, but `ipython` does not by
+default.
+
+Using `flatten2()` or `flatten_gen()` will produce very similar tracebacks and
+exceptions (small details of their tracebacks vary, but `RecursionError` is
+the general result in all cases).  If strings are nested within other data
+structures rather than top level, the result is essentially the same.
+
+[source,python]
+----
+>>> flatten2(('a', ('b', 'c')), [])
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+  File "<stdin>", line 4, in flatten2
+  File "<stdin>", line 4, in flatten2
+  File "<stdin>", line 4, in flatten2
+  [Previous line repeated 2 more times]
+  File "<stdin>", line 2, in flatten2
+  File "<frozen abc>", line 119, in __instancecheck__
+RecursionError: maximum recursion depth exceeded in comparison
+----
+
+'''
+
+The solution to these issues is adding some unfortunate ugliness to code like
+the examples shown here:
+
+.Ugly but safe flatten function
+[source,python]
+----
+>>> def flatten_safe(o, items=[]):
+...     if isinstance(o, (str, bytes)):            # (1)
+...         items.append(o)
+...     elif isinstance(o, Iterable):
+...         for part in o:
+...             flatten_safe(part, items)
+...     else:
+...         items.append(o)
+...     return items
+...
+>>> flatten_safe(('a', ['b', 'c'], {'dee'}), [])
+['a', 'b', 'c', 'dee']
+>>> flatten_safe(nested, [])
+[1, 2, 3, 8, 9, 10, 11, 4, 5, 6, 7, 12, 13, 14, 15, 16, 17, 18]
+
+>>> flatten([b'abc', [100, 101]], [])
+[97, 98, 99, 100, 101]                             # (2)
+>>> flatten_safe([b'abc', [100, 101]], [])
+[b'abc', 100, 101]                                 # (3)
+----
+
+(1) `bytes` has a slightly different, but also annoying issue.
+
+(2) No exception occurred, but probably not what you wanted.
+
+(3) Most likely, the behavior you were hoping for.
+
+It would be nice if Python had a virtual parent class like
+`collections.abc.NonAtomicIterable`.  Unfortunately, it does not, and it
+_cannot_ without substantially changing the semantics of Python strings.  Or
+perhaps, less intrusively, `isinstance()` could conceivably check for
+something else beyond the presence of an +++<code>.__iter__()</code>+++ when
+deciding whether an object is an instance of this hypothetical
+`NonAtomicIterable` interface.
+
+For current Python, as of 3.11 (and really, for 3.12 which is in alpha at the
+time of this writing, with no planned features similar to that which I
+hand-wave towards), special case checking for string-ness is really the only
+approach available to handle the dual composite/atomic nature of strings.
+

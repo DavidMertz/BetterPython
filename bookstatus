@@ -1,0 +1,21 @@
+#!/usr/bin/env python
+
+import os
+n_words = 0
+for root, dir_, files in os.walk("src"):
+    for name in files:
+        if name.endswith(".adoc"):
+            filepath = os.path.join(root, name)
+            fh = open(filepath)
+            n_words += len(fh.read().split())
+
+topics, done = 0, 0
+with open('status.md') as st:
+    for line in st:
+        if line.startswith('['):
+            topics += 1
+        if line.startswith('[X]'):
+            done += 1
+
+print(f"Topics planned: {topics}; completed: {done}")
+print(f"Total words in book draft: {n_words:,}")

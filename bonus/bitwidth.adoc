@@ -1,0 +1,4 @@
+== Using wider datatypes than you actually need in NumPy or Pandas 
+
+(e.g. int64 where uint8 suffices for a purpose)
+

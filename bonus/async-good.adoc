@@ -1,0 +1,3 @@
+== Using `threading` or `multiprocessing` where `async` would be a better choice
+
+This might be orchestrated with `asyncio`, `curio`, or `uvloop`.

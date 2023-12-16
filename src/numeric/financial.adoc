@@ -1,0 +1,192 @@
+== Avoid Floating Point Numbers For Financial Calculations
+
+Python developers, as with those in most other popular programming languages,
+generally reach for floating point numbers when peforming numeric
+calculations.  However, sometimes those calculations concern financial
+quantities—most commonly units of currency, but also sometimes specified
+shares of assets or other units.
+
+Very often when financial calculations are involved, the exact manner of the
+calculation is specified by laws or regulations.  Unlike with, for example,
+extrapolations from scientific data where more precision is generically
+better—or at least precision might be a trade-off against speed of
+calculation—financial regulations indicate an exact procedure that must be
+used.  Moreover, such procedures are almost universally given in terms of
+rounding and precision of base-10 numbers.  For example, exact whole dollars
+and cents must be determined within each stage of a series of calculations.
+
+Suppose that you make a deposit at a bank, and they tell you that the bank
+will pay you 3.95% interest on your deposit, with interest compounded daily.
+By the rules of daily compounding, this will be an effective interest rate of
+approximately 4.03% if you leave your money in the bank for a whole year.
+Moreover, to simplify things for this discussion, we will simply assume that
+the current year is not a leap year.footnote:[There are diverse methods of
+accounting for leap years in actual use by different lenders, and permitted by
+different regulatory jurisdictions.  And example of how complex this can be is
+discussed at JS Coats Capital LLC page "Interest Calculation Methods"
+(https://jscoats.com/interest-calculation-methods/), for example.]  In Python:
+
+[source,python]
+----
+>>> f"{100 * ((1 + 0.0395/365)**365 - 1):.3f}%"
+'4.029%'
+----
+
+However, the regulatory jurisdiction the bank falls under specifies the
+following rules:
+
+* The daily balance must be stored internally in tenths-of-a-cents.  These
+  daily internal balances must round fractional balance half-a-hundredth
+  amounts to an even number of tenths.
+* The customer-available daily balance is based on the internal balance, but
+  when rounding half-a-tenth, the cents are rounded down.
+* Exact daily records are audited by the regulatory agency on a recurring
+  basis, and errors face stiff fines.
+
+We know that 64-bit floating point numbers have a great deal more precision
+than these required amounts.  A 64-bit float carries approximately 17 decimal
+digits of precision with it, which is certainly quite a lot more than the 2 or
+3 digits (cents or tenths) that we apparently need.  Perhaps we can get by
+with a program that simply stores approximations as-needed.
+
+.Source code of `code/daily_interest_float`
+[source,python]
+----
+#!/usr/bin/env python
+import sys
+
+def print_daily_balance(deposit, interest_rate):
+    balance = deposit
+    daily_interest = interest_rate/365
+    print(" Day | Customer | Internal")
+    print("-----+----------+----------")
+    for day in range(1, 366):
+        print(f" {day:>3d} | {balance:8.2f} | {balance:8.3f}")
+        balance = balance * (1 + daily_interest)
+
+if __name__ == '__main__':
+	deposit = float(sys.argv[1])
+	interest_rate = float(sys.argv[2]) / 100
+    print_daily_balance(deposit, interest_rate)
+----
+
+Let's take a look, in part at what this program outputs:
+
+.Incorrect abridged daily balance sheet for interest bearing account
+[source,shell]
+----
+[BetterPython]$ code/daily_interest_float 500 3.95 
+ Day | Customer | Internal
+-----+----------+----------
+   1 |   500.00 |  500.000
+   2 |   500.05 |  500.054
+   3 |   500.11 |  500.108
+   4 |   500.16 |  500.162
+   5 |   500.22 |  500.216
+   6 |   500.27 |  500.271         # (1)
+ ... |    ...   |   ...
+ 360 |   519.81 |  519.807         # (1)
+ 361 |   519.86 |  519.863         # (1)
+ 362 |   519.92 |  519.919         # (2)
+ 363 |   519.98 |  519.975         # (2)
+ 364 |   520.03 |  520.032         # (1)
+ 365 |   520.09 |  520.088         # (2)
+----
+
+(1) Customer-available balance rounds to correct, but internal balance is in
+error.
+
+(2) Both customer-available and internal balance are in error.
+
+This program just rounds where needed using f-string formatting.  We _could_
+also use a `round(balance, 3)` within the loop to periodically approximate in
+an attempt to meet the regulatory rules.  Neither this naive approach nor such
+period approximation will produce _exactly_ the right balances though.
+
+On its face, the customer has earned _approximately_ the correct amount of
+interest at the end of the year, and even pretty close to the right amount at
+each intervening day.  However, the *true* balance sheet should read like
+this:
+
+.Correct abridged daily balance sheet for interest bearing account
+[source,shell]
+----
+[BetterPython]$ code/daily_interest_decimal 500 3.95
+ Day | Customer | Internal
+-----+----------+----------
+   1 |   500.00 |  500.000
+   2 |   500.05 |  500.054
+   3 |   500.11 |  500.108
+   4 |   500.16 |  500.162
+   5 |   500.22 |  500.216
+   6 |   500.27 |  500.270
+ ... |    ...   |   ...
+ 360 |   519.80 |  519.802
+ 361 |   519.86 |  519.858
+ 362 |   519.91 |  519.914
+ 363 |   519.97 |  519.970
+ 364 |   520.03 |  520.026
+ 365 |   520.08 |  520.082
+----
+
+The divergence between the actually correct calculation and the purely
+floating point one occurs slowly, and numeric error is hardly overwhelming.
+If these were scientific calculations—or even if they were predictive models
+within finance—these numeric divergences would be trivial.  Under laws,
+treaties, and regulatory rules they are not, however,
+
+The `decimal` module treats decimal arithmetic correctly, including precision
+and rounding rules.  There are separate available rounding modes for
+`ROUND_CEILING`, `ROUND_DOWN`, `ROUND_FLOOR`, `ROUND_HALF_DOWN`,
+`ROUND_HALF_EVEN`, `ROUND_HALF_UP`, `ROUND_UP`, and `ROUND_05UP`. The code
+that solves this specific problem utilizes two of these, and would produce
+slightly different (wrong) results if it had not chosen exactly the two it
+does.
+
+.Source code of `code/daily_interest_decimal`
+[source,python]
+----
+#!/usr/bin/env python
+
+import sys
+from decimal import Decimal, ROUND_HALF_EVEN, ROUND_HALF_DOWN
+
+def print_daily_balance(deposit, interest_rate):
+    balance = deposit
+    daily_interest = interest_rate/365
+    print(" Day | Customer | Internal")
+    print("-----+----------+----------")
+    cents = Decimal('1.00')
+    tenths = Decimal('1.000')
+    for day in range(1, 366):
+        balance = balance.quantize(tenths, rounding=ROUND_HALF_EVEN)
+        customer = balance.quantize(cents, rounding=ROUND_HALF_DOWN)
+        print(f" {day:>3d} | {customer:8.2f} | {balance:8.3f}")
+        balance = balance * (1 + daily_interest)
+
+if __name__ == '__main__':
+	deposit = Decimal(sys.argv[1])
+	interest_rate = Decimal(sys.argv[2]) / 100
+    print_daily_balance(deposit, interest_rate)
+----
+
+We can notice that the method ROUND_HALF_EVEN is entirely statistically
+balanced.  In the long run, on data that does not contain inherent
+distortions, trends and tendencies will balance exactly.  But that does not
+assure that _every_ result will be the same as if a greater (false) precision
+were used.  
+
+Using ROUND_HALF_DOWN is systematically biased, however, in this particular
+code it never propagates, but is simply a repeatedly derived quantization. Had
+we used that within the internal balance running total, we would
+systematically trend down versus the "true" floating point approximations
+(albeit very slowly so in this example).
+
+Half the solution to mistakes that result from using (binary) floating point
+number for financial math is simply "use the `decimal` module."  While these
+numbers are not _as fast_ as IEEE-754 floating point numbers, Python provides
+a pretty efficient machine-native implementation.  The second half of the
+solution is more subtle; it requires accurately understanding the rounding and
+precision rules that are imposed by regulatory or administrative concerns.
+The exact details of solutions will vary based on those concerns, but the
+`decimal` module provides options for all such widely used rules.

@@ -1,0 +1,72 @@
+:chapter: 3
+:sectnums:
+:figure-number: 0
+:figure-caption: Figure {chapter}.
+:listing-caption!:
+:table-caption: Table {chapter}.
+:sectnumoffset: 0
+:leveloffset: 1
+
+= A Grab Bag Of Python Gotchas
+
+This chapter looks at concerns one encounters—and often mistakes one might
+make—strictly within the Python language itself. Like the prior two chapters,
+on looping, and on equality versus identity, these discussions are about the 
+core of the Python language. Later chapters look at less common language 
+constructs, less used or more specialized standard library modules, and some 
+very common third-party modules.
+
+While the discussions in this chapter are somewhat heterogenous, they also
+address a few of the most failings real-world Python code encounters, in my
+experience. A fair number of the issues in this chapter reflect the use of
+habits developed for other programming languages which are less well suited
+to Python code.
+
+
+== Naming Things
+
+As the famous saying goes:
+
+> There are two hard things in computer science: cache invalidation, naming
+> things, and off-by-one errors.
+
+In this section we will look at where naming can go wrong.  The kinds of
+mistakes addressed in this section are somewhat heterogeneous, but all pertain
+in one way or another to ways that choosing names badly can either cause your
+programs to break outright, or at the least make them fragile, ugly, and
+unpythonic.
+
+include::core/file-naming.adoc[leveloffset=+1]
+include::core/import-star.adoc[leveloffset=+1]
+include::core/bare-except.adoc[leveloffset=+1]
+
+// Quadratic string concatenation
+include::core/quadratic.adoc[leveloffset=+0]
+
+// Miscellany
+include::core/use-cms.adoc[leveloffset=+0]
+include::core/sort-key.adoc[leveloffset=+0]
+include::core/dict-get.adoc[leveloffset=+0]
+
+== Wrapping Up
+
+In this chapter, we examined some very everyday features that can easily be
+used in ways causing problems. These ordinary pitfalls range from code that
+gets the right results, but does so with far worse runtime expense than is
+needed, to ways that poor choices of names can create ambiguities or
+conflicts, to failing to recognize the need for familiar and idiomatic,
+Pythonic approaches (which incidentally save you from problems in edge cases).
+
+In this book we learn that many things that are possible, and that many of
+them are nonetheless are best avoided.  The chapter _Just Because You Can, It
+Doesn’t Mean You Should…_ looks at what we might call "impulsive" uses of
+rather advanced features.  The pitfalls in this chapter, however, express
+tasks you perform almost every time you sit down to write a Python program, or
+modify or expand an existing one.  Even these simple things can be done
+wrongly.
+
+While such is not the only source of mistakes, often those in this chapter
+reflect habits brought by developers from other programming languages they may
+have used earlier.  Adapting your Python habits to utilize Pythonic code shows
+kindness to yourself and to your colleagues.
+

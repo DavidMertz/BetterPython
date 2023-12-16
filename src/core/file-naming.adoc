@@ -1,0 +1,153 @@
+== Naming A File Identically To A Standard Library Module
+
+The mechanism Python uses for determining where to import modules from is
+fairly convoluted.  There are a lot of options, to provide a lot of
+flexibility.  Setting the environment variable `PYTHONPATH` can affect this.
+Use of virtual environments can affect this.  Runtime manipulation of
+`sys.path`—including within imported modules themselves—can affect this. Use
+of `_pth` files can affect this.  The  `-E`, `-I`, `-s` and `-S` command-line
+options can affect this.
+
+Unfortunately, it's _just complicated_.  This is not the book to explore the
+details of Python's import system, but a good summary writeup is available at
+https://docs.python.org/3/library/sys_path_init.html.
+
+The upshot of this complication is that developers are very well served by
+avoiding filenames that conflict with the names of standard library modules—or
+indeed with the names of any other third-party packages or modules they intend
+to use.  Unfortunately, there are a lot of names in the latter category
+especially, and conflicts can arise innocently.
+
+If you are uncertain about a conflict, or fear one may occur as you add later
+dependencies, use of _relative imports_ can often avoid these mistakes.
+
+Let's take a look at a short shell session:
+
+[source,shell]
+----
+[BetterPython]$ python code/hello.py
+Hello World!
+[BetterPython]$ cd code
+[code]$ python hello.py
+Program goes BOOM!
+----
+
+There are many "magical" ways I could obtain this odd behavior, but the one I
+used is really not _all that_ magical.
+
+.Source code of `code/hello.py`
+[source,python]
+----
+# The special path manipulation
+import sys, os
+if 'code' not in os.path.abspath('.'):
+    sys.path = [p for p in sys.path if "BetterPython" not in p]
+
+# The "regular" program
+import re
+pat = re.compile("hello", re.I)
+s = "Hello World!"
+if re.match(pat, s):
+    print(s)
+----
+
+Notice that the message "Program goes BOOM!" is completely absent from this
+script.  That's because it lives in `re.py`; just not the version of that file
+that comes with the Python standard library, but the version that happens to be
+at `/home/dmertz/git/PythonFoibles/code/re.py` on my computer.
+
+.Source code of `code/re.py`
+[source,python]
+----
+import sys
+print("Program goes BOOM!")
+sys.exit()
+----
+
+Of course, if you use NumPy or Pandas, the same kind of conflict might occur
+with naming a local module `numpy.py` or `pandas.py`.  So simply looking at the
+standard library module list does not assure absence of conflict.  But there
+_are_ a lot of ways to come up with distinctive names for the files in your own
+project.
+
+Let's suppose, however, that you really want to use a particular name.  For
+example, `calendar` is a standard library module, but one that is very old and
+that you've probably never even thought about using.  However, it's a pretty
+good, generic name, one that could very easily be a good choice for a submodule
+name within your own brand new project.
+
+[NOTE]
+.The oldest Python module(s)
+====
+When I mention that `calendar` is _old_, I really mean it.  It was in Python
+0.9 with largely the same capabilities, in 1991.
+
+[source,shell]
+----
+[BetterPython]$ grep '0\.9' \
+    /home/dmertz/miniconda3/envs/py0.9/README
+This is version 0.9 (the first beta release), patchlevel 1.
+[BetterPython]$ /home/dmertz/miniconda3/envs/py0.9/bin/python
+>>> import calendar
+>>> calendar.prmonth(2023, 2)
+Mon Tue Wed Thu Fri Sat Sun
+          1   2   3   4   5
+  6   7   8   9  10  11  12
+ 13  14  15  16  17  18  19
+ 20  21  22  23  24  25  26
+ 27  28
+----
+
+Python has a pretty strong commitment to backward compatibility.
+====
+
+Rather trivially, we might write out own `calendar.py` module as:
+
+.Source code of `code/calendar.py`
+[source,python]
+----
+from datetime import datetime
+this_year = datetime.now().year
+this_month = datetime.now().month
+----
+
+We can utilize this code within a script:
+
+.Source code of `code/thismonth.py`
+[source,python]
+----
+from .calendar import this_year, this_month        # (1)
+from calendar import TextCalendar
+TextCalendar().prmonth(this_year, this_month)      # (2)
+----
+
+(1) One or more dots before a module name indicates a _relative import_ (see
+https://docs.python.org/3/reference/import.html).
+
+(2) Yes! The API changed modestly in the 32 years between Python 0.9 and Python
+3.12
+
+This script uses both the global and the local `calendar.py` module (the
+standard library provides `TextCalendar`; the local module provides
+`this_year` and `this_month`).  Let's run it:
+
+[source,shell]
+----
+[BetterPython]$ python -m code.thismonth
+   February 2023
+Mo Tu We Th Fr Sa Su
+       1  2  3  4  5
+ 6  7  8  9 10 11 12
+13 14 15 16 17 18 19
+20 21 22 23 24 25 26
+27 28
+---- 
+
+You can, of course, use relative imports for less trivial modules and
+subpackages, including across multiple levels of a directory hierachy.  See
+https://docs.python.org/3/reference/import.html#package-relative-imports for
+details.
+
+Avoid using the same names as other libraries, including the standard library,
+wherever it feels reasonable to do so.  As a fallback, relative imports are a
+reasonable solution to the problem.

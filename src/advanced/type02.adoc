@@ -1,0 +1,167 @@
+== Mistaking `typing.NewType()` For A Runtime Type
+
+This section singles out `NewType()`, but there are a number of objects within
+the `typing` module that are easy to confuse with features of runtime type
+checks.  In fact, many of the same objects have dual roles that can confuse
+developers, especially those coming from other programming languages where
+type systems function differently (i.e. especially those with static typing,
+which annotations resemble).
+
+An object like `typing.Sequence` is a good example of a dual role object.
+Suppose you have a function that can only operate reasonably on a sequence.
+You might write something like this:
+
+.An annotated function to manipulate integer sequences
+[source,python]
+----
+>>> from typing import Sequence
+>>> def double_middle_element(seq: Sequence[int]) -> Sequence[int]:
+...     if len(seq) > 0:
+...         middle = len(seq)//2
+...         item = seq[middle] * 2
+...         new = seq[:middle] + type(seq)([item]) + seq[middle+1:]
+...     return new
+...
+>>> double_middle_element([5, 8, 4, 6, 2, 3])
+[5, 8, 4, 12, 2, 3]
+>>> double_middle_element((5, 8, 4, 6, 2, 3))
+(5, 8, 4, 12, 2, 3)
+----
+
+For experienced users of Python type annotations, this may be insufficiently
+constrained in the declaration since the declaration itself does not require
+that e.g. a tuple is returned if a tuple is passed as an argumemnt (although
+that _is_ the runtime behavior).  However, that's not the topic of this
+particular section.
+
+We might expect this code to catch some misuses that it seems obviously to
+declare improperly.
+
+.Annotation do not impose runtime constraints
+[source,python]
+----
+>>> double_middle_element("abcde")
+"ab['cc']de"
+>>> double_middle_element({1: 'a', 2: 'b', 3: 'c'})
+Traceback (most recent call last):
+[...]
+TypeError: unhashable type: 'slice'
+----
+
+The code accidentally "works" with a string as an argument.  The result is
+likely not what we want, but no exception is raised.  However, for the
+dictionary argument, the exception that occurs really is not related to the
+fact the argument is _not a sequence of integers_.
+
+If we wanted actual runtime checks, we could write something more like this:
+
+.A runtime checked function to manipulate integer sequences
+[source,python]
+----
+>>> def double_middle_element(seq):
+...     "Double middle element in sequence of ints or return unchanged"
+...     if not isinstance(seq, Sequence) or not seq:
+...         return seq
+...     if not all(isinstance(i, int) for i in seq):
+...         return seq
+...     middle = len(seq)//2
+...     item = seq[middle] * 2
+...     return seq[:middle] + type(seq)([item]) + seq[middle+1:]
+...
+>>> double_middle_element((5, 8, 4, 6, 2, 3))
+(5, 8, 4, 12, 2, 3)
+>>> double_middle_element([5, 8, 4, 6, 2, 3])
+[5, 8, 4, 12, 2, 3]
+>>> double_middle_element({1: 'a', 2: 'b', 3: 'c'})
+{1: 'a', 2: 'b', 3: 'c'}
+>>> double_middle_element("abcde")
+'abcde'
+----
+
+Notice that the self-same object `Sequence` might play either a static or
+runtime role, but the code is structured differently for the two purposes.
+Using Pydantic might provide a path to unify these two roles, but the basic
+idea that "using the same object in different contexts does different things"
+isn't actually that hard to think about.
+
+Some objects in `typing` definitely provide an attractive nuisance, however.
+For example, an actual colleague of mine—who admittedly primarily develops in
+C++, but has used Python on the side for more than a decade—wanted to have
+specialized integers against which he could perform an `isinstance()` check
+elsewhere in his program.  This desire is eminently reasonable.  Perhaps
+`UserId` is a special type of integer in the sense that we'd like to make sure
+a generic integer isn't used in certain places.  Or maybe we want an integer
+for a thermometer temperature, or for a percentile ranking, or for a distance
+measure where we want to avoid confusing miles with kilometers.  Knowing
+whether the wrong kind of unit/value has snuck in is quite useful.
+
+With such a need in mind, here is an obvious—and wrong—solution to the
+requirement.
+
+.Failing program to convert temperatures to Kelvin
+[source,python]
+----
+>>> from typing import NewType
+>>> Fahrenheit = NewType("F", float)
+>>> Celsius = NewType("C", float)
+>>> roomF = Fahrenheit(70.0)
+>>> roomC = Celsius(21.1)
+>>> def to_Kelvin(t):
+...     if isinstance(t, Celsius):
+...         return t + 273.15
+...     elif isinstance(t, Fahrenheit):
+...         return 5 * (t-32)/9 + 273.15
+...     else:
+...         return temp
+...
+>>> to_Kelvin(roomF)
+Traceback (most recent call last):
+[...]
+TypeError: isinstance() arg 2 must be a type, a tuple of types, 
+  or a union
+----
+
+At least this fails quickly.  But why did that not work?  If we read the
+`typing` documentation carefully, we discover that "these checks are enforced
+only by the static type checker."
+
+The way we would actually solve this problem is with the plain-old, boring
+`class` statement that we've had since Python 1.0.  Albeit, here I use a few
+more recent features for a more robust version:
+
+.Successful program to convert temperatures to Kelvin
+[source,python]
+----
+>>> class Celsius(float):
+...     def __new__(cls, deg):
+...         if deg < -273.15:
+...             raise ValueError("Colder than absolute zero")
+...         return super().__new__(cls, deg)
+...
+>>> class Fahrenheit(float):
+...     def __new__(cls, deg):
+...         if deg < -459.67:
+...             raise ValueError("Colder than absolute zero")
+...         return super().__new__(cls, deg)
+...
+>>> def to_Kelvin(t):
+...     if isinstance(t, Celsius):
+...         return t + 273.15
+...     if isinstance(t, Fahrenheit):
+...         return 5 * (t-32)/9 + 273.15
+...     return t
+...
+>>> to_Kelvin(Celsius(21.1))
+294.25
+>>> to_Kelvin(Fahrenheit(70.0))
+294.26111111111106
+>>> to_Kelvin(294.3)
+294.3
+>>> Celsius(-300)
+Traceback (most recent call last):
+[...]
+ValueError: Colder than absolute zero
+----
+
+If you didn't care about the bounds checking, it would be sufficient simply to
+write, e.g., `class Celsius(float): pass`.

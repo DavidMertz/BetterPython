@@ -1,0 +1,136 @@
+== (Often) Use `enum` Rather Than `CONSTANT`
+
+The `enum` module was added to Python 3.4, and has grown incremental new
+capabilities in several versions since then.  Prior to that module being
+added, but also simply because some developers are more accustomed to
+languages such as bash, C, and Java,footnote:[C, Java, Go, Rust, C#,
+TypeScript, and most programming languages, also have enums of varying
+stripes.  But the `CONSTANT` convention is nonetheless often seen in code in
+those langauges.] it is not uncommon to see capitalized names (usually defined
+at a module scope) used as constants in Python code.
+
+.Informal enumerations using capitalization
+[source,python]
+----
+"This module works with sprites havings colors and shapes"
+
+RED = "RED"
+GREEN = "GREEN"
+BLUE = "BLUE"
+
+CIRCLE, SQUARE, TRIANGLE = range(3)
+
+class Sprite:
+    def __init__(self, shape, color):
+        self.shape = shape
+        self.color = color
+
+    # ... other methods
+
+def process(sprite):
+    if sprite.shape == TRIANGLE and sprite.color == RED:
+        red_triangle_action(sprite)
+    elif something_else:
+        # ... other processing
+----
+
+In a highly dynamic language like Python, we _can_ potentially redefine
+"constants" since the capitalization is only a convention rather than in the
+syntax or semantics of the language.  If some later line of the program
+redefines `SQUARE = 2`, buggy behavior is likely to emerge.  More likely is
+that some other module that gets imported has redefined `SQUARE` to something
+other than the expectation of the current module. This risk is minimal if
+imports are within namespaces, but `from othermod import SQUARE, CUBE, TESSERACT`
+is not necessarily unreasonable to have within the current module.
+
+Programs written like the above are not necessarily broken, and not even
+necessarily mistakes, but it is certainly more elegant to use enums for
+constants that come in sets.
+
+.Using enums for sets of alternatives
+[source,python]
+----
+>>> from enum import Enum
+>>> Color = Enum("Color", ["RED", "GREEN", "BLUE"])
+>>> class Shape(Enum):
+...     CIRCLE = 0
+...     SQUARE = 1
+...     TRIANGLE = 2
+...
+>>> my_sprite = Sprite(Shape.TRIANGLE, Color.RED)
+>>> def process(sprite):
+...     if sprite.shape == Shape.TRIANGLE and sprite.color == Color.RED:
+...         print("It is a red triangle")
+...     elif something_else:
+...         pass
+...
+>>> process(my_sprite)
+It is a red triangle
+>>> Color.RED = 2
+Traceback (most recent call last):
+[...]
+AttributeError: cannot reassign member 'RED'
+----
+
+It's not _impossible_ to get around the protection that an `Enum` provides,
+but you have to work quite hard to do so rather than break it inadvertently.
+In effect, the attributes of an enum are _read-only_.  Therefore, reassigning
+to an immutable attribute raise an exception.
+
+There are also "constants" that are not alternatives, but simply values; these
+likewise cannot actually be enforced as constants in Python.  Enums might
+still be reasonable namespaces with slightly more enforcement against changes
+than modules have.
+
+.Overwriting constants
+[source,python]
+----
+>>> import math
+>>> radius = 2
+>>> volume = 4/3 * math.pi * radius**3
+>>> volume                                 # (1)
+33.510321638291124
+>>> math.pi = 3.14                         # (2)
+>>> 4/3 * math.pi * radius**3
+33.49333333333333
+>>> from math import pi
+>>> 4/3 * pi * radius**3
+33.49333333333333
+>>> pi = 3.1415                            # (3)
+>>> 4/3 * pi * radius**3
+33.50933333333333
+----
+
+(1) As good as we get with 64-bit floating point numbers.
+
+(2) Monkey-patch a bad approximation of pi.
+
+(3) A somewhat less bad approximation of pi.
+
+.Using enums to "enforce" value consistency
+[source,python]
+----
+>>> from enum import Enum
+>>> import math
+>>> class Math(Enum):
+...     pi = math.pi
+...     tau = math.tau
+...     e = math.e
+...
+>>> radius = 2
+>>> Math.pi.value
+3.141592653589793
+>>> 4/3 * Math.pi.value * radius**3
+33.510321638291124
+>>> math.pi = 3
+>>> 4/3 * Math.pi.value * radius**3
+33.510321638291124
+>>> Math.pi.value = 3
+Traceback (most recent call last):
+[...]
+AttributeError: <enum 'Enum'> cannot set attribute 'value'
+----
+
+This usage doesn't really use `Enum` as a way of enumerating distinct values,
+but it _does_ carry with it a modest protection of "read-only" values.
+

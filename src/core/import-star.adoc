@@ -1,0 +1,181 @@
+== Avoid Using `import *` 
+
+It is *usually* a bad idea use `from modname import *` in your Python modules
+and scripts.  This pattern is dangerous even when purely restricted to the
+standard library, but becomes worse when used with the dizzying array of
+third-party modules that define their own names.  This bad idea is one you
+will encounter in a lot of existing code, and in thousands of answers on
+StackOverflow.
+
+The reason why the pattern is dangerous is quite plainly because many modules
+use the same names for objects, especially for functions (but sometimes for
+classes, constants, or other things).  The number of different meanings given
+to `encode()`, `open()`, `connect()`, or `add()` are numerous.  If you use the
+`import *` pattern, the behavior of your program can change dramatically based
+only on the order of your import statements.  This is made much worse when many
+imports may be indirect or dynamic.
+
+Let's take a look at three Python programs:
+
+.Source code of `math1.py`
+[source,python]
+----
+from math import *
+from cmath import *
+from numpy import *
+
+inf = float('inf')
+for fn, num in zip([sqrt, ceil, isfinite], [-1, 4.5, inf*1j]):
+    try:
+        print(f"{fn.__name__}({num}) -> {fn(num)}")
+    except Exception as err:
+        print(err)
+----
+
+These three only vary in the order of their import lines:
+
+.Source code of `math2.py`
+[source,python]
+----
+from cmath import *
+from numpy import *
+from math import *
+
+inf = float('inf')
+for fn, num in zip([sqrt, ceil, isfinite], [-1, 4.5, inf*1j]):
+    try:
+        print(f"{fn.__name__}({num}) -> {fn(num)}")
+    except Exception as err:
+        print(err)
+----
+
+Finally, one more import order:
+
+.Source code of `math3.py`
+[source,python]
+----
+from math import *
+from numpy import *
+from cmath import *
+
+inf = float('inf')
+for fn, num in zip([sqrt, ceil, isfinite], [-1, 4.5, inf*1j]):
+    try:
+        print(f"{fn.__name__}({num}) -> {fn(num)}")
+    except Exception as err:
+        print(err)
+----
+
+Is it apparent at a glance what each of these scripts will do? 
+
+Try to reason about the results before reading the outputs below.  What makes
+this still more complicated is that some of the functions used are in all of
+modules imported from, others are in only some of the modules.  So the actual
+meaning of the names `sqrt`, `ceil`, and `isfinite` are only obvious if you
+know all three of these modules intimately (and know the specific versions of
+the moudles you are working with).
+
+.Outputs from running the sample scripts
+[source,shell]
+----
+[BetterPython]$ python code/math1.py
+RuntimeWarning: invalid value encountered in sqrt
+  print(f"{fn.__name__}({num}) -> {fn(num)}")
+sqrt(-1) -> nan
+ceil(4.5) -> 5.0
+isfinite((nan+infj)) -> False
+
+[BetterPython]$ python code/math2.py
+math domain error
+ceil(4.5) -> 5
+must be real number, not complex
+
+[BetterPython]$ python code/math3.py
+sqrt(-1) -> 1j
+ceil(4.5) -> 5.0
+isfinite((nan+infj)) -> False
+----
+
+Clearly, we have used three different versions of `sqrt()` since we arrived at
+three different answers.  It is less clear what is occurring for `ceil()` and
+`isfinite()`.  
+
+`ceil()` has produced two different answers, varying in datatype.  But that
+might be two implementations, and it might be three implementations.  As it
+turns out, `cmath` lacks an implementation of `ceil()`, so one of the
+implementations in `math` and `numpy` are active for the differing scripts;
+those different implementations merely happen to produce the same result in
+this example.
+
+`isfinite()` has also produced two different answers, although one answer
+isn't really a result but rather an exception.  In any case, it turns out that
+there are three different implementations of `isfinite()` involved here, with
+the `numpy` version accepting a variety of optional arguments and being happy
+to operate elementwise on arrays, as well as on scalars.
+
+It is, of course, _possible_ to overwrite a name imported from one module with
+a later import from another module, even if names are specified.  But
+explicitly including the names makes reasoning about what is happening much
+more obvious.
+
+.Named imports of common names from multiple modules
+[source,python]
+----
+from numpy import sqrt
+from cmath import sqrt
+from math import sqrt
+# ...more code...
+----
+
+In the above example, it jumps out that we are repeatedly overwriting the name
+`sqrt`, and whatever definitions `cmath` or `numpy` might provide are
+inaccessible because only the definition in `math` will be used.  If that name
+had not been present in one of the earlier module, we would see an immediate
+`ImportError`.  Of course, we could change our imports to use the namespaced
+`cmath.sqrt` instead; or we could use `from cmath import sqrt as csqrt` to
+provide an alternate name.  Whatever choice we make becomes apparent from the
+code itself.
+
+[NOTE]
+.Rules have exceptions
+====
+Many experienced Pythonistas will disagree with me about the following.
+However, I believe that there are a few standard library modules where the
+`import *` pattern remain okay to use.
+
+The module `itertools` contains many useful functions for performing "lazy
+iterator algebra" that, by design, play nicely with each other and have
+distinctive names relatively unlikely to occur elsewhere.  If you start a
+program using `filterfalse()` and `takewhile()`, you are likely to later
+discover a related need for `repeat()` and `chain()`.  In a sense, I believe
+that all the names in `itertools` would be reasonable to have put into
++++<code>__builtins__</code>+++.  I have a similar attitude towards the
+third-party `more_itertools` (which has a lot more names, and is discussed
+elsewhere) which likewise "plays nice" with itself and with `itertools`.
+
+On the other hand, it isn't all that difficult to explicitly begin your script
+with:
+
+[source,python]
+----
+from itertools import (
+    filterfalse, takewhile, repeat, chain, groupby, tee)
+----
+
+If you want to use a few others, just add them to the list.  I would make the
+same comment about `collections.abc`, in which names like `AsyncIterable` and
+`MutableMapping` are extremely unlikely to be accidentally re-used by some
+unrelated module (even a third-party module).  There is nothing there where
+`import *` is likely to cause harm.
+
+There are some other modules where I also do not worry about name conflicts
+very much, but the specific functionalities you want are very limited.  If you
+want `collections.namedtuple`, there is little reason you will necessarily
+want the handful of other collections inside it.  `dataclasses.dataclass`,
+`fractions.Fraction`, and `decimal.Decimal` are nearly the _only_ names inside
+those modules.  In the last case, however, `decimal.getcontext`,
+`decimal.setcontext`, and `decimal.localcontext` are actually likely to be
+useful; so probably `decimal` is another of the few modules where I personally
+would not object to `import *`.  
+====
+

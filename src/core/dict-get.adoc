@@ -1,0 +1,102 @@
+== Use `dict.get()` For Uncertain Keys
+
+An occassionally forgotten convenience of the `dict` object is its `.get()`
+method.  It's really handy, and code that takes other approaches is usually
+slightly cumbersome and less friendly.
+
+Remember the students used in prior section about sorting? Let's return to
+them.  But let's add a few more of them.
+
+[source,python]
+----
+students = [
+    dict(name="Xian", grade="A-", age=10),
+    dict(name="Jane", grade="B", age=12),
+    dict(name="John", grade="C", age=15),
+    dict(name="Pema", age=14),
+    dict(name="Thandiwe", grade="B+")
+----
+
+We'd like to create a little report from our student list.  A somewhat awkward
+approach to the missing data might be:
+
+.Look-before-you-leap approach (LBYL)
+[source,python]
+----
+>>> print("| Name      | Grade | Age")
+... print("+-----------+-------+-----")
+... for student in students:
+...     name = student['name'] if 'name' in student else "MISSING"
+...     grade = student['grade'] if 'grade' in student else "PASS"
+...     age = student['age'] if 'age' in student else "?"
+...     print(f"| {name:9s} | {grade:<4s}  | {age}")
+...
+| Name      | Grade | Age
++-----------+-------+-----
+| Xian      | A-    | 10
+| Jane      | B     | 12
+| John      | C     | 15
+| Pema      | PASS  | 14
+| Thandiwe  | B+    | ?
+----
+
+Despite what I warn later, in the _Advanced Python Usage_ chapter, there are
+times when forgiveness-not-permission makes code worse.  As below:
+
+.Easier-to-ask-forgiveness-than-permission approach (EAFP)
+[source,python]
+----
+>>> print("| Name      | Grade | Age")
+... print("+-----------+-------+-----")
+... for student in students:
+...     try:
+...         name = student['name']
+...     except KeyError:
+...         name = "MISSING"
+...     try:
+...         grade = student['grade']
+...     except KeyError:
+...         grade = "PASS"
+...     try:
+...         age = student['age']
+...     except KeyError:
+...         age = "?"
+...     print(f"| {name:9s} | {grade:<4s}  | {age}")
+...
+| Name      | Grade | Age
++-----------+-------+-----
+| Xian      | A-    | 10
+| Jane      | B     | 12
+| John      | C     | 15
+| Pema      | PASS  | 14
+| Thandiwe  | B+    | ?
+----
+
+In this example, and in many where we work with dictionaries, neither of these
+approaches is ideal.  Both LBYL and EAFP require too much code and impede
+readability for this task.  The cleanest solution is simply "pick a default":
+
+.Just-use-default approach
+[source,python]
+----
+>>> print("| Name      | Grade | Age")
+... print("+-----------+-------+-----")
+... for student in students:
+...     print(f"| {student.get('name', 'MISSING'):9s} "
+...           f"| {student.get('grade', 'PASS'):<4s}  "
+...           f"| {student.get('age', '?')}")
+...
+| Name      | Grade | Age
++-----------+-------+-----
+| Xian      | A-    | 10
+| Jane      | B     | 12
+| John      | C     | 15
+| Pema      | PASS  | 14
+| Thandiwe  | B+    | ?
+----
+
+Breaking the `print()` argument across lines means we only save one line
+(although a few more characters are saved).  More importantly, we simply
+express the intention to default to certain values and avoid introducing extra
+variables within the loop.
+

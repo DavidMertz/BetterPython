@@ -1,0 +1,164 @@
+== `collections.ChainMap`
+
+The lovely object `collections.ChainMap` is a sort of _virtual mapping_.  It
+provides an abstraction for looking through multiple dictionaries (or other
+mappings) successively.  When using a `ChainMap` we avoid needing to copy any
+data and also avoid modification of the underlying dictionaries outside of the
+proper context for doing so.
+
+For this section, as with the last few, we will look at a Python solution
+first, followed by the mistake it fixes.
+
+=== The Solution
+
+A common pattern for configuration options is to have multiple dictionaries
+that could potentially contain information, with each overriding a previous
+one according to the business logic of an application.  Using `ChainMap` we
+can accomplish exactly that:
+
+[source,python]
+----
+>>> from collections import ChainMap
+>>> default = {
+...     "timeout-secs": 30,
+...     "environment": "development",
+...     "env-file": "/opt/.env-default"
+... }
+>>> application = {
+...     "timeout-secs": 15,
+...     "application-name": "FooBarMaker",
+...     "env-file": "/user/local/foobar/.env"
+... }
+>>> user = {
+...     "timeout-secs": 60,
+...     "env-file": "/home/david/.env-foobar",
+...     "username": "David"
+... }
+
+>>> settings = ChainMap(user, application, default)
+>>> settings["timeout-secs"]                       # (1)
+60
+>>> settings["username"]                           # (2)
+'David'
+>>> settings["environment"]                        # (3)
+'development'
+>>> settings.get("application-name", "app")        # (4)
+'FooBarMaker'
+>>> settings.get("session", "Unknown")             # (5)
+'Unknown'
+----
+
+(1) First mapping provides the key, others ignored.
+
+(2) Only first mapping has the key.
+
+(3) Last mapping has this key.
+
+(4) Middle mapping has key, so return value.
+
+(5) None of mappings have the key, fallback to argument.
+
+This becomes even more useful if some of the mappings might change at runtime.
+For example:
+
+[source,python]
+----
+>>> user['username'] = "Dr. Mertz"
+>>> settings["username"]
+'Dr. Mertz'
+>>> user['application-name'] = "DavidMaker"
+>>> settings["application-name"]
+'DavidMaker'
+----
+
+The mappings included in a `ChainMap` are dynamically referenced.  We can
+examine which they are:
+
+[source,python]
+----
+>>> settings.maps
+[{'timeout-secs': 60, 'env-file': '/home/david/.env-foobar',
+'username': 'Dr. Mertz', 'application-name': 'DavidMaker'},
+{'timeout-secs': 15, 'application-name': 'FooBarMaker', 'env-file':
+'/user/local/foobar/.env'}, {'timeout_secs': 30, 'environment':
+'development', 'env-file': '/opt/.env-default'}]
+----
+
+The method `collections.ChainMap.new_child()` also allows you to add
+additional maps to the beginning of the search sequence.  In principle, the
+`.maps` attribute can be modified as well, but it is usually less clean to do
+so (creating a new `ChainMap` is nearly free).
+
+
+=== The Mistake
+
+Doing what `ChainMap` does "manually" is possible, but cumbersome.  For
+example, we might write a function to accomplish the same purpose:
+
+[source,python]
+----
+def search_dicts(key, default, *dicts):
+...     for dict_ in dicts:
+...         if key in dict_:
+...             return dict_[key]
+...     return default
+...
+>>> search_dicts("timeout-secs", 120, user, application, default)
+60                                                 # (1)
+>>> search_dicts("environment", "prod", user, application, default)
+'development'                                      # (2)
+>>> search_dicts("session", "Unknown", user, application, default)
+'Unknown'                                          # (3)
+----
+
+(1) Located value from `user`.
+
+(2) Located value from `default`.
+
+(3) Fallback to argument.
+
+This isn't a large amount of code, but you need to call it each time, rather
+than carrying the sequence of mappings around in a single object.  Moreover
+this is effectively only `collections.ChainMap.get()` and not the full
+collection of dict-like methods a `ChainMap` provides.
+
+Worse than a utility function such as the one shown, is manually updating
+dictionaries.  For example, if we were to do this, we would indeed get a
+mapping with the collection of values we wish to use:
+
+[source,python]
+----
+>>> default.update(application)
+>>> default.update(user)
+>>> default
+{'timeout-secs': 60, 'environment': 'development', 'env-file':
+'/home/david/.env-foobar', 'application-name': 'DavidMaker', 
+'username': 'Dr.  Mertz'}
+----
+
+However, after merging in `application` and `user` into `default`, we have
+lost a record of what might have earlier been inside `default` and what might
+have been absent.  For many applications, retaining that information is
+valuable.
+
+One might try to remedy this by using a brand new name (assume all the initial
+mappings are reset to the initial values shown above):
+
+[source,python]
+----
+>>> settings = default.copy()
+>>> settings is default
+False
+>>> settings.update(application)
+>>> settings.update(user)
+>>> settings
+{'timeout-secs': 60, 'environment': 'development', 'env-file':
+'/home/david/.env-foobar', 'application-name': 'FooBarMaker', 
+'username': 'David'}
+----
+
+This is perhaps better than the last mistaken version since `default` has its
+initial configuration maintained. Still, if the application updates one or
+more of the collected mappings, that is not reflected in `settings` unless we
+use the same few lines each time before checking `settings`.
+

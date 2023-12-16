@@ -1,0 +1,28 @@
+= Pandas
+
+== This chapter covers
+
+* mistake 1
+* mistake 2
+
+'''
+
+Pandas is a large and powerful library and tool.  This book looks at just a
+few of the more common mistakes developers using it make.
+
+include::pandas/fluent.adoc[leveloffset=+0]
+include::pandas/pd-nan.adoc[leveloffset=+0]
+include::pandas/pd-iter.adoc[leveloffset=+0]
+include::pandas/pd-apply.adoc[leveloffset=+0]
+include::pandas/pd-category.adoc[leveloffset=+0]
+include::pandas/pd-datetime.adoc[leveloffset=+0]
+
+== Wrapping Up
+
+Ponderous ruminations.
+
+== Summary
+
+* Do this.
+* Do that.
+

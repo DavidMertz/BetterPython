@@ -1,0 +1,28 @@
+= NumPy
+
+== This chapter covers
+
+* mistake 1
+* mistake 2
+
+'''
+
+For fast vectorized computation, the NumPy library is much better than standard
+Python.  The popular dataframe library Pandas build on top of NumPy, but has
+its own collection of frequent mistakes in the next chapter.
+
+include::numpy/np-nan.adoc[leveloffset=+0]
+include::numpy/np-iter.adoc[leveloffset=+0]
+include::numpy/np-err.adoc[leveloffset=+0]
+include::numpy/bitwidth.adoc[leveloffset=+0]
+include::numpy/np-broadcast.adoc[leveloffset=+0]
+
+== Wrapping Up
+
+Numbers are quite mysterious indeed.
+
+== Summary
+
+* Do this.
+* Do that.
+

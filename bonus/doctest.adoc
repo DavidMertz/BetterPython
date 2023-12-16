@@ -1,0 +1,41 @@
+== Failing to use doctests
+
+NOTE: Rework the thoughts Steven suggested, but putting here to remember them.
+
+[quote,Steven D'Aprano]
+____
+Here’s a specific TDD mistake that you might like.
+
+Don’t rely on “no output == no errors” when doing testing.
+
+Many moons ago, I wrote a library which used a custom descriptor to wrap all
+the methods in a class. I had extensive doctests, and was developing using a
+variant of TDD for each method:
+
+write the method; add the docstring with some tests; run doctest on the module
+and see what broke.  Most of the methods were relatively small, and I expected
+them to pass, so I felt pretty smug when all of the tests passed first time.
+
+Until I got to a method with tests that I knew wouldn’t pass, because it was
+more complex and I hadn’t written all the implementation yet, but I did have
+all the tests. I ran doctest, and … everything passed.
+
+Cut to the chase: I was relying on no output == no errors. When I ran doctest
+in verbose mode, I discovered that it wasn’t running any of my tests. Not one.
+The custom descriptor was interfering with doctest’s ability to recognise them
+as methods, so they weren’t being picked up and the doctests weren’t being run.
+
+(If I recall corectly, this was back in 2.4 days, when doctest was more finicky
+about what it considered a method.)
+
+Cue much wailing and gnashing of teeth. I had to re-engineer the whole module
+to get doctest to work, and which point I discovered that nearly all of the
+tests were failing.
+
+The lessons I learned from this:
+
+run doctest in verbose mode occasionally, to make sure it is actually running
+what you think it is running; when doing TDD, having tests visibly fail first
+is a good idea; don’t trust “no output == no errors”, since no output can also
+mean nothing ran at all.
+____

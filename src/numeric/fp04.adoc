@@ -1,0 +1,113 @@
+== Naive Use Of Floating Point Numbers: Granularity
+
+The dark corners of floating point arithmetic include not only associativity
+and distributivity, as we have seen, but also granularity.  The IEEE-754
+standard allows for expression of numbers across a very large numeric range in
+comparatively few bits; this section looks at an implication of that choice in
+places where errors become tempting.
+
+Let's examine a problem, then one solution and one failed try at a solution.
+
+.Trying to find the mean of three floating point numbers
+[source,python]
+----
+>>> import statistics
+>>> import numpy as np
+>>> nums = [1e20, 1.0, -1e20]
+>>> sum(nums)/len(nums)
+0.0
+>>> statistics.mean(nums)
+0.3333333333333333
+>>> np.mean(nums)
+0.0
+----
+
+We are able to say at this point that the module `statistics` does a good job
+of averaging, and both the arithmetically obvious hand-rolled approach and
+NumPy do a much worse job (that is, they are flatly wrong).
+
+I suppose we might stop at commenting "solve your problem by using
+`statistics`."  This is not terrible advice for those operations which it
+includes and assume samples without an inherent order.  We've seen in another
+puzzle that this list does not include `statistics.median()` in the presence
+of NaNs.  But for mean, geometric mean, harmonic mean, mode, multimode,
+quantiles, standard deviation, variance, linear regression, population
+variance, covariance, and a few other operations, the advice is sound.
+
+Let's look into this quandary more deeply. The underlying problem is that the
+structure of floating point numbers, with a sign, an exponent, and a mantissa,
+causes the distribution of representable numbers to be uneven.  In particular,
+the gap between one floating point number and the next representable floating
+point number can be more than another number in a sample collection.
+
+.Granularity of floating point numbers
+[source,python]
+----
+>>> math.nextafter(1e20, math.inf)                 # (1)
+1.0000000000000002e+20
+>>> math.nextafter(1e20, -math.inf)                # (1)
+9.999999999999998e+19
+>>> 1e20 + 1.0 == 1e20
+True
+----
+
+(1) The second argument indicates which _direction_ to go for this "next"
+float.  Pedantically, any floating point number will work there, but in most
+cases positive or negative infinity are used.
+
+Since the gap between the closest floating point numbers is more than 1.0 in
+the region of `1e20`, adding or subtracting 1.0 can have no effect.  The best
+representation remains the number we started with.  In fact, this example is
+based around the 64-bit floating point numbers native to the system I am
+writing on; the problem is much worse for 32-bit floating point numbers, and
+absurdly terrible for 16-bit numbers.
+
+.Granularity by floating point by bit-width
+[source,python]
+----
+>>> from numpy import inf, nextafter
+>>> nextafter(np.array(1e20, np.float32), inf)     # (1)
+1.0000000200408775e+20
+>>> nextafter(np.array(1e15, np.float32), inf)     # (2)
+999999986991104.1
+>>> nextafter(np.array(1e6, np.float16), inf)      # (3)
+inf
+>>> nextafter(np.array(50_000, np.float16), inf)   # (4)
+49984.00000000001
+----
+
+(1) The next 32-bit float after 1e20 is 2,004,087,750,656 larger!
+
+(2) The "next" 32-bit float after 1e15 is 13,008,896 _smaller_! 1e15 is
+represented as a still smaller number than the "next" one!
+
+(3) Even the next 16-bit float after a million is infinity.
+
+(4) The "next" 16-bit float after 50,000 is actually smaller than 50k.
+
+Despite the doom-and-gloom of some of these examples, there is _often_ (but
+not always) a pretty straightforward way to address these granularity issues.
+If your operation involves adding together numbers of widely different sizes,
+sorting them in reverse order by absolute value first will generally achieve
+the best stability you can find with floating point numbers.
+
+[NOTE] 
+.Being absolutely precise about numeric error
+====
+Although the heuristic I provide is worth keeping in mind, it is _not_
+what the `statistics` module does.  Instead (simplifying a bit), that module
+first converts all numbers to numerically exact (but much slower) Fractions,
+then down-converts back to floats as needed.
+====
+
+.A "usually correct" heuristic for adding collections of numbers
+[source,python]
+----
+>>> nums = [1e20, 1.0, -1e20]
+>>> sum(sorted(nums, key=abs, reverse=True))/len(nums)
+0.3333333333333333
+----
+
+There is, unfortunately, currently no direct way of doing the equivalent
+stabilization in NumPy.  You can, of course, convert a 1-D NumPy array to a
+Python list, and back again, but at the cost of orders-of-magnitude slowdowns.

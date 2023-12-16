@@ -1,0 +1,3 @@
+== Testing quirks of an existing implementation
+
+...rather than for the intent of a function

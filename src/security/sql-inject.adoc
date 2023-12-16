@@ -1,0 +1,222 @@
+== SQL Injection Attacks When Not Using DB-API
+
+SQL injection attacks are a general security vulnerability across almost all
+languages that are able to utilize SQL databases.  It's not a _mistake_ that
+is specific to Python, but the solution is specifically to use the full
+capabilities of Python's DB-API.  Other programming languages and other
+libraries or drivers have their own solutions, but in Python, it falls under
+the DB-API, which almost all database drivers follow.
+
+Part of what the DB-API provides is a way of passing parameters to an SQL call
+in a way that is guaranteed to be safe against injection attacks.  For most
+modern RDBMSs (_Relational Database Management System_), the query parameters
+are, in fact, passed as a separate stream from the query template.  However,
+other than feeling happy that efficiency is improved thereby, you do not need
+to worry about that internal detail.  You simply can be assured that the
+DB-API and driver module are keeping you safe.
+
+Let's see a simple example of using the DB-API:
+
+.A simple (and safe) example of using the DB-API
+[source,python]
+----
+>>> password = keyring.get_password("postgres", "pw")  # (1)
+>>> import psycopg                                     # (2)
+>>> with psycopg.connect(
+...         dbname='mistakes',
+...         host='localhost',
+...         user='developer',
+...         password=password) as conn:
+...     with conn.cursor() as cur:
+...         cur.execute("SELECT * FROM wordlist")
+...         for record in cur:
+...             print(record)
+...     conn.commit()
+...
+('biochips',)
+('fluoroacetate',)
+('potentialities',)
+('steelwares',)
+('edacity',)
+('platter',)
+('pulverizations',)
+('entertains',)
+('photoionising',)
+----
+
+(1) Per the mistake of putting secrets in source code, a good approach is used
+here.
+
+(2) The Psycopg 3 driver to connect to PostgreSQL.
+
+However, there may be quite a few words in this wordlist, so we'd like to
+limit it.  Specifically, we'd like to limit it based on a criteria provided by
+a user; in our case, users may request to only see words having a certain
+prefix.
+
+.A seemingly simple function with exposed injection attach
+[source,python]
+----
+>>> def some_words():
+...     prefix = input("[Prefix]? ")
+...     print("-"*40)
+...     with psycopg.connect(
+...             dbname='mistakes',
+...             host='localhost',
+...             user='developer',
+...             password=password) as conn:
+...         with conn.cursor() as cur:
+...             cur.execute(f"SELECT word FROM wordlist "
+...                         f"WHERE word LIKE '{prefix}%'")
+...             for record in cur:
+...                 print(record[0])
+...         conn.commit()
+...
+>>> some_words()
+[Prefix]? p
+----------------------------------------
+potentialities
+platter
+pulverizations
+photoionising
+----
+
+So far, it is all still straightforward and simple.  But let's try calling the
+function another time:
+
+.An injection attack in action
+[source,python]
+----
+>>> some_words()
+[Prefix]? ';DELETE FROM wordlist;--
+----------------------------------------
+----
+
+The problem is not, of course, simply that nothing matches the strange user
+input. It's that we actually did the following:
+
+* Select words matching `''`
+* Delete *everything* in the table
+* Include a final comment of `--'`
+
+An unsanitized user-provided input just deleted the entire content of our
+table! Requesting the "e" prefix words ("edacity" and "entertains") shows the
+empty table, as likewise does trying the "p" prefix again.
+
+[source,python]
+----
+>>> some_words()
+[Prefix]? e
+----------------------------------------
+>>> some_words()
+[Prefix]? p
+----------------------------------------
+----
+
+[NOTE]
+.Exploits of a Mom
+====
+Randall Munroe's brilliant comic strip XKCD, as often, captures the concern of
+this mistake very pithily. We reproduce https://xkcd.com/327/ under its
+Attribution-NonCommercial 2.5 Generic (CC BY-NC 2.5) license.
+
+image::images/exploits_of_a_mom.png[]
+
+Python itself also has a wonderful reference to XKCD.  Try typing `import
+antigravity` in a Python shell sometime.
+====
+
+
+Let's repopulate the table with some new words, and try a safer version of the
+function.  Showing a special fondness for the letter "b", I ran this query in
+the `psql` shell:
+
+[source,sql]
+----
+mistakes=> INSERT INTO wordlist (word) VALUES
+    ('blondness'),
+    ('disinures'),
+    ('starchily'),
+    ('behoveful'),
+    ('berming');
+INSERT 0 5
+----
+
+Before we do that, however, it is worth mentioning that the DB-API actually
+allows for several different styles of parameter specification, which drivers
+are free to choose among.  These are specified in PEP 249
+(https://peps.python.org/pep-0249/).
+
+[%header,cols="1,1"]
+|===
+|paramstyle
+|Meaning
+
+|qmark
+|Question mark style, e.g. ...WHERE name=?
+
+|numeric
+|Numeric, positional style, e.g. ...WHERE name=:1
+
+|named
+|Named style, e.g. ...WHERE name=:name
+|format
+|ANSI C printf format codes, e.g. ...WHERE name=%s
+
+|pyformat
+|Python extended format codes, e.g. ...WHERE name=%(name)s
+|=== 
+
+Inquiring into the current `psycopg` driver:
+
+[source,python]
+----
+>>> psycopg.paramstyle
+'pyformat'
+----
+
+Armed with that knowledge, let's secure our function:
+
+.A function with query parameters sanitized and protected against injection
+[source,python]
+----
+>>> def some_words():
+...     prefix = input("[Prefix]? ")
+...     print("-"*40)
+...     with psycopg.connect(
+...             dbname='mistakes',
+...             host='localhost',
+...             user='developer',
+...             password=password) as conn:
+...         with conn.cursor() as cur:
+...             cur.execute(
+...                 "SELECT word FROM wordlist WHERE word LIKE %s;",
+...                 (f"{prefix}%",))                   # (1)
+...             for record in cur:
+...                 print(record[0])
+...         conn.commit()
+...
+>>> some_words()
+[Prefix]? b
+----------------------------------------
+behoveful
+berming
+blondness
+----
+
+(1) The interaction between `%` as an SQL wildcard versus in a Python string
+require a bit of special care for this example.
+
+If we try a similar injection with this corrected code, nothing bad happens.
+We just get zero results because [.code]``'';DELETE FROM wordlist;--`` isn't a
+word in the `wordlist` table.  Or if it _is_ an unusual word, we get the
+harmless result:
+
+[source,python]
+----
+>>> some_words()
+[Prefix]? '';DELETE FROM wordlist;--
+----------------------------------------
+'';DELETE FROM wordlist;--more stuff after prefix
+----
+

@@ -1,0 +1,78 @@
+== Use `enumerate()` Instead Of Looping Over An Index
+
+Developers coming from C-derived languages sometimes reach automatically for
+loops over the index elements of a list or other data structure.  This is
+usually an unpythonic way to write a loop.  Code written in this manner is not
+significantly slower than using `enumerate()`, but it is less readable, more
+verbose, and generally simply feels like a "code smell."
+
+For example, in C++, an idiom like this is common:
+
+[source,c++]
+----
+// `items` could be array, vector, or other collection types
+for (int i = 0; i < items.size(); i++) {
+    process(i, items[i]);
+}
+----
+
+A closely analogous option is available in Python, and in Python's somewhat
+distant past, such an approach was the standard available mechanism:
+
+[source,python]
+----
+for i in range(len(items)):
+    process(i, items[i])
+----
+
+Indeed, if you are not required to utilize the index position within a loop,
+utilizing the index at all is generally a code smell in Python.  Much more
+idiomatic is simply:
+
+[source,python]
+----
+for item in items:
+    process(None, item)
+----
+
+On those fairly common occasions where you need both index and the underlying
+item, using `enumerate()` is much more expressive and idiomatic:
+
+[source,python]
+----
+for i, item in enumerate(items):
+    process(i, item)
+----
+
+On the relatively uncommon situations where I want the index but not the item
+itself, I often use `enumerate()` anyway, and use the Python convention of `_`
+(single underscore) representing "a value I don't care about."
+
+[source,python]
+----
+for i, _ in enumerate(items):
+    process(i, None)
+----
+
+An approach that I use from time to time, where I actually want to maintain
+several increments, is to initialize the several counters prior to a loop,
+even if one of them could derive from `enumerate()`:
+
+[source,python]
+----
+total, n_foo, n_bar = 0, 0, 0
+for item in items:
+    if is_foo(item):
+        process_foo(item)
+        n_foo += 1
+    elif is_bar(item):
+        process_bar(item)
+        n_bar += 1
+    else:
+        pass
+    total += 1
+----
+
+In the example, `total` could equally well be reset while enumerating the loop
+itself, but you might wish to emphasize the parallel with `n_foo` and `n_bar`,
+which is probably better expressed as above.

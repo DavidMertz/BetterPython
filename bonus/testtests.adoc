@@ -1,0 +1,4 @@
+== Test your tests!
+
+Until you've seen tests fail, you cannot be confident they are really testing
+what you want.

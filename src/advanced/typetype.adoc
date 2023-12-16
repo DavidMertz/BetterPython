@@ -1,0 +1,206 @@
+== Comparing `type(x) == type(y)`
+
+It is common to wish for Python functions to be polymorphic.  A great many of
+the built-in functions operate on numerous kinds of objects. For example,
+`len()`, `repr()`, `float()` and `sum()` can each accept a variety of objects
+(not the same variety for each though).
+
+When you wish to write your own functions, very often you can do so by _duck
+typing_.  In such instance, any kind of typing is bypassed.  Often a
+`try`/`except` block, under the EAFP approach is used ("easier to ask
+forgiveness than seek permission").  Nonetheless, there are definitely times
+when you specifically want to do something different depending on the type of
+values passed to a function (or to local variables created in its body).
+
+[NOTE]
+.Quacking like a duck
+====
+Wikipedia provides a good definition of "duck typing"
+(https://en.wikipedia.org/wiki/Duck_typing):
+
+> Duck typing in computer programming is an application of the duck test—"If
+> it walks like a duck and it quacks like a duck, then it must be a duck"—to
+> determine whether an object can be used for a particular purpose. With
+> nominative typing, an object is of a given type if it is declared to be.
+> [...] In duck typing, an object is of a given type if it has all methods and
+> properties required by that type. Duck typing can be viewed as a usage-based
+> structural equivalence between a given object and the requirements of a type.
+
+Pythonic programming very often utilizes the idea of duck typing.
+====
+
+Let's create a function that performs a binary operation in a vectorized
+manner across a concrete sequence.  Later chapters deal with inherently
+vectorized libraries like NumPy and Pandas.  For this example, we only pay
+attention to pure-Python.  Directly comparing types: 
+
+.Function vector_op() (flawed implementation)
+[source.python]
+----
+from operator import add                           # (1)
+
+def vector_op(seq1, seq2, op=add):
+    if type(seq1) != type(seq2):
+        raise ValueError(
+            "Both sequences must have same collection type")
+
+    if type(seq1) == list:                         # (2)
+        return [op(x, y) for x, y in zip(seq1, seq2, strict=True)]
+
+    if type(seq1) == tuple:                        # (3)
+        return tuple(op(x, y) 
+                for x, y in zip(seq1, seq2, strict=True))
+
+    if type(seq1) == str:                          # (4)
+        nums1 = seq1.split()
+        nums2 = seq2.split()
+        new = (op(float(x), float(y))
+                for x, y in zip(nums1, nums2, strict=True))
+        return " ".join(str(n) for n in new)
+
+    raise ValueError("Unsupported type for collections")
+----
+
+(1) Addition as a named function.
+
+(2) Comparing type to only list, and not to any subclass.
+
+(3) Comparing type to only tuple, and not to any subclass.
+
+(4) Comparing type to only str, and not to any subclass.
+
+We can use this function with various arguments:
+
+[source,python]
+----
+>>> from operator import mul
+>>> vector_op("3 4 7", "2 -1 3", mul)
+'6.0 -4.0 21.0'
+>>> vector_op((3, 4, 7), (2, -1, 3), mul)
+(6, -4, 21)
+>>> vector_op([3, 4, 7], [2, -1, 3], mul)
+[6, -4, 21]
+>>> vector_op((3, 4, 7), (2, -1, 3), lambda x, y: (2*x) ** y)
+(36, 0.125, 2744)
+>>> vector_op([3, 4, 7], (2, -1, 3), mul)
+Traceback (most recent call last):
+[...]
+ValueError: Both sequences must have same collection type
+>>> vector_op([3, 4, 7], [2, -1], mul)
+Traceback (most recent call last):
+[...]
+ValueError: zip() argument 2 is shorter than argument 1
+----
+
+This function is plausibly useful.  It also will fail to work on many
+arguments that are useful in an obvious way.  Unless we genuinely need to
+avoid supporting subclasses (which is unusual, but not _inconceivable_), a more
+general implementation based around `isinstance()` is much more sensible.  For
+example:
+
+[source,python]
+----
+>>> from collections import namedtuple
+>>> Vector3D = namedtuple("Vector3D", "x y z")
+>>> vec1 = Vector3D(3, 4, 4)
+>>> vector_op(vec1, (2, -1, 3))
+Traceback (most recent call last):
+[...]
+ValueError: Both sequences must have same collection type
+
+>>> vec2 = Vector3D(x=2, y=-1, z=3)
+>>> vector_op(vec1, vec2)
+Traceback (most recent call last):
+[...]
+ValueError: Unsupported type for collections
+
+>>> isinstance(vec1, tuple)
+True
+----
+
+We can easily support specializations of the types supported by the
+`vector_op()` function.  It would feel much more useful if the above failing
+calls simply worked; similarly, why not allow any subtypes of `list` or `str`
+to work seamlessly when doing so is no extra work?
+
+While we are at it, why not simply support the abstract protocols to which
+`list`, `tuple`, and `str` belong.  If some object is simply structurally
+typed in a manner "close enough" to what we need for the work of each branch,
+we can use capabilities rather than precise type.
+
+.Function vector_op() (good and generic implementation)
+[source,python]
+----
+from collections.abc import MutableSequence, Sequence, ByteString
+from operator import add
+
+def vector_op(seq1, seq2, op=add):
+    if isinstance(seq1, (ByteString, str)) \       # (1)
+           and isinstance(seq2, (ByteString, str)):
+        nums1 = seq1.split()
+        nums2 = seq2.split()
+        new = (op(float(x), float(y))
+                for x, y in zip(nums1, nums2, strict=True))
+
+        if isinstance(seq1, ByteString):
+            as_str = " ".join(str(n) for n in new)
+            return type(seq1)(as_str.encode("ascii"))  # (2)
+        else:
+            sep = type(seq1)(" ")                  # (2)
+            return sep.join(type(seq1)(n) for n in new)
+
+    # Since issubclass(MutableSequence, Sequence), we could
+    # specialize implementation of mutable versus immutable.
+    # However, since we construct the concrete collection from a
+    # generator comprehension, this is handled for us here.
+    if isinstance(seq1, Sequence) and isinstance(seq2, Sequence):
+        new = (op(x, y) for x, y in zip(seq1, seq2, strict=True))
+        try:
+            return type(seq1)(new)                 # (2)
+        except TypeError:
+            # Unfortunately, namedtuple must be instantiated
+            # with separate arguments not one generator
+            return type(seq1)(*new)
+
+    raise ValueError("Unsupported type for collections")
+----
+
+(1) Since `issubclass(str, Sequence)`, we need to check for string-like objects
+first.
+
+(2) We defer to type of the first sequence where they are "compatible" but
+distinct.
+
+The new implementation is much more flexible while also being slightly shorter
+(if you remove the exta comments).  We can try it out:
+
+[source,python]
+----
+>>> vector_op(vec1, vec2)
+Vector(x=5, y=3, z=7)
+>>> vector_op(vec1, (2, -1, 3))
+Vector(x=5, y=3, z=7)
+>>> vector_op(vec1, [2, -1, 3])                    # (1)
+Vector(x=5, y=3, z=7)
+>>> vector_op("3 4 7", "2 -1 3", mul)
+'6.0 -4.0 21.0'
+>>> vector_op(b"3 4 7", b"2 -1 3", mul)
+b'6.0 -4.0 21.0'
+>>> vector_op(b"3 4 7", "2 -1 3")                  # (1)
+b'5.0 3.0 10.0'
+
+>>> vector_op([3, 4, 4], (2, -1, 3))               # (1)
+[5, 3, 7]
+>>> vector_op((3, 4, 4), [2, -1, 3])               # (1)
+(5, 3, 7)
+----
+
+(1) If you wish for less flexibility in mixing non-subtypes, the code could be
+tweaked easily enough.
+
+There remains a little bit of magic in the second implementation in that we
+inspect `type(seq1)` to decide a precise class to use when constructing the
+result.  A somewhat less magical version might simply return a list whenever a
+mixture of `Sequence` types are passed as arguments.  However, a little bit of
+magic is not always unpythonic; at times this power can be used wisely and
+powerfully.

@@ -1,0 +1,201 @@
+== Quadratic Behavior Of Naive String Concatenation
+
+[NOTE]
+.Understanding runtime complexity
+====
+The title of this pitfall discussion includes a little bit of computer science
+jargon.  The word "quadratic" in mathematics refers to a polynomial with degree
+two.  It actually means exactly the same thing in computer science, but the
+connection is perhaps not obvious immediately.
+
+In computer science, we often talk about the "big-O" behavior of various
+algorithms (see https://en.wikipedia.org/wiki/Big_O_notation). This concern
+arises in a number of discussions in this book.
+
+In quick synopsis, big-O complexity expresses the relationship between the
+size of the data being operated on and the time a computer will take to
+perform the operation.  The best we can hope for is O(1), which means that the
+code will take the same amount of time no matter what size the data is.  More
+commonly, O(N) is achievable, which means that the compute time increases in
+lockstep with the data size.  A bit worse, but frequently seen, is O(N×log N);
+this says that the compute time is the size of the data multiplied by the
+logarithm of that size.
+
+We start to become worried when we see quadratic, i.e. O(N²) behavior.  Worse
+behaviors are possible though.  Some computation might take time equal to the
+cube, or the 4th power, of the data size.  The worst behavior we commonly
+encounter is called exponential, i.e. O(2^N).  These algorithms become
+intractable very quickly as data size grows; some so-called "hard problems"
+cannot be improved over exponential complexity.
+====
+
+Python string concatenation uses an intuitive plus operator, although this same
+operator has very different meaning for other types. For example, `+` (which
+under-the-hood calls the "dunder"footnote:[The term "dunder" is commonly used
+by Python programmers to refer to names that have both two leading and two
+trailing underscore.  These are discussed in a number places throughout the
+book.] methods +++<code>.__add__()</code>+++ or +++<code>.__radd()__</code>+++
+on the class of the objects involved) means addition of numbers and aggregation
+of lists as well.
+
+Code such as this is intuitive, readable, and perfectly Pythonic:
+
+[source,python]
+----
+firstname = "David"
+lastname = "Mertz"
+degree = "Ph.D."
+
+fullname = firstname + " " + lastname              # (1)
+if degree:
+    fullname += ", "  + degree
+----
+
+(1) This might be better as an f-string.
+
+However, this good code can quickly go bad if we do too many concatenation
+operations.
+
+[source,python]
+----
+>>> from pprint import pprint
+>>> def lorem_ipsum(n=10):
+...     phrase = ""
+...     for _ in range(n):
+...         phrase = phrase + get_word() + " "     # (1)
+...     return phrase
+...
+>>> pprint(lorem_ipsum(), width=68)
+('engobe rereads hussif bethwacks aubade followup rabic '
+ 'privateerings nonsegregation sniffed ')
+----
+
+(1) String concatenation.
+
+_So far_, this code remains reasonably Pythonic, and _as used_ I have no
+complaint about it.  As with other examples ancillary to the main point of a
+section, or requiring larger datasets, the source code and data file can be
+found at https://gnosis.cx/better.  All that matters for the current
+discussion is that `get_word()` returns some string each time it is
+called.footnote:[Picking random words from the SOWPODS English wordlist
+(https://en.wikipedia.org/wiki/Collins_Scrabble_Words) may not have the
+specific letter-spacing distributions that typesetters like for "Lorem ipsum"
+samples, but we don't really care for the purposes within this book.]
+
+But what happens if we try to generate larger phrases with this code?
+
+[source,python]
+----
+>>> %timeit lorem_ipsum(10)
+5.85 µs ± 54 ns per loop (mean ± std. dev. of 7 runs, 100,000 loops each)
+>>> %timeit lorem_ipsum(1000)
+957 µs ± 8.09 µs per loop (mean ± std. dev. of 7 runs, 1,000 loops each)
+>>> %timeit lorem_ipsum(100_000)
+5.64 s ± 33.8 ms per loop (mean ± std. dev. of 7 runs, 1 loop each)
+----
+
+Going from 10 words to 1,000 words is still mostly dominated by the time it
+takes to randomly select from the 267,752 available words.  So rather than
+taking 100 times as long, we increase to about about 200 times as long.
+However, increasing the size of the concatenated string by another 100 times
+(approximately; words vary in length), takes about 5,500 times as long.
+
+What is happening here is that immutable strings are being allocated and
+deallocated with many of the concatenations.  It's not quite on every
+concatenation since CPython uses some overallocation internally, but it is
+common.  This leads to approximately quadratic (i.e. O(N²) on number of words)
+growth in the complexity.
+
+It happens that for the toy code I show, there is a solution that involves
+almost no change to the `lorem_ipsum()` function.  However, this approach does
+not generalize if you are doing much more than building one single long
+string.  Python is optimized to treat _in-place_ string concatenation more
+like it does appending to a list, which has amortized O(N) behavior (the
+chapter _Misusing Data Structures_, in the section "Deleting or Adding
+Elements to the Middle of a List," discusses amortized cost further).
+
+.In-place string concetenation
+[source,python]
+----
+>>> def lorem_ipsum(n=10):
+...     phrase = ""
+...     for _ in range(n):
+...         phrase += get_word() + " "             # (1)
+...     return phrase
+...
+>>> %timeit lorem_ipsum()
+5.37 µs ± 194 ns per loop (mean ± std. dev. of 7 runs, 100,000 loops each)
+>>> %timeit lorem_ipsum(1000)
+549 µs ± 6.04 µs per loop (mean ± std. dev. of 7 runs, 1,000 loops each)
+>>> %timeit lorem_ipsum(100_000)
+53.1 ms ± 765 µs per loop (mean ± std. dev. of 7 runs, 10 loops each)
+----
+
+(1) The `+=` operator is called "in-place."
+    
+This is perfect scaling!  However, for functions or loops which cannot be
+expressed quite as simply as this, it is worth keeping in mind two additional
+options.  These will often be practical in situations where in-place
+concatenation does not allow straightforward expression of your requirement.
+
+.Concatenation of constructed list
+[source,python]
+----
+>>> def lorem_ipsum(n=10):
+...     words = []
+...     for _ in range(n):
+...         words.append(get_word())
+...     return " ".join(words)
+...
+>>> %timeit lorem_ipsum()
+4.55 µs ± 54.4 ns per loop (mean ± std. dev. of 7 runs, 100,000 loops each)
+>>> %timeit lorem_ipsum(1000)
+426 µs ± 3.43 µs per loop (mean ± std. dev. of 7 runs, 1,000 loops each)
+>>> %timeit lorem_ipsum(100_000)
+47.5 ms ± 917 µs per loop (mean ± std. dev. of 7 runs, 10 loops each)
+----
+
+Using a final `str.join()` is a few percent faster, which is not particularly
+important (and doesn't necessarily generalize).  But the important thing is
+that it maintains linear scaling as the size of the list/string grows.
+
+Another approach is to use an `io.StringIO` stream.
+
+.Streams for file-like appending of strings
+[source,python]
+----
+>>> from io import StringIO
+>>> def lorem_ipsum(n=10):
+...     buff = StringIO()
+...     for _ in range(n):
+...         buff.write(get_word() + " ")
+...     return buff.getvalue()
+...
+>>> %timeit lorem_ipsum()
+5.69 µs ± 176 ns per loop (mean ± std. dev. of 7 runs, 100,000 loops each)
+>>> %timeit lorem_ipsum(1000)
+548 µs ± 9.33 µs per loop (mean ± std. dev. of 7 runs, 1,000 loops each)
+>>> %timeit lorem_ipsum(100_000)
+57.2 ms ± 430 µs per loop (mean ± std. dev. of 7 runs, 10 loops each)
+----
+
+Again, `io.StringIO` has the same linear scaling we are looking for, and is
+within a few percent of the same speed as the other approaches.  Using streams
+might be just slightly slower in the simple case, but having a file-like
+object lets you do operations like `.seek()`, `.tell()`, and `.readlines()`
+that are often independently useful.  Moreover, if you need to "scale up" to
+using an actual filesystem (for persistence, for example), many file-like
+objects can be a drop-in replacement within the code.
+
+I summarize the performance of several approaches to appending strings in
+Table 3.1.
+
+.Approaches to appending string, time in µs, per data size
+[%header,format=dsv]
+|===
+Times (µs):10 strings:1000 strings:100,000 strings
+Appending strings:5.85:957:5,640,000
+In-place concat:5.37:549:53,100
+Final list.join():4.55:426:47,500
+StringIO writes:5.69:548:57,200
+|===

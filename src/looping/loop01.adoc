@@ -1,0 +1,109 @@
+== (Rarely) Generate A List For Iteration 
+
+A common pattern in many Python programs is to generate a sequence of items to
+process, append them to a list, and then loop through that list, processing
+each item as we get to it.  In fact, structuring programs this way is often
+perfectly sensible and wholly intuitive.  Except when it is not.
+
+When the sequence of items might be very long (or potentially infinite), or
+each item might be a memory-hungry object, creating and populating a list
+often consumes more memory than is needed.  As well, when the processing
+operation might be concurrent with the generating operation, we might spend a
+long time generating the list, followed by a similarly long time processing
+the list.  If actual parallelism is possible, we might instead be able to
+complete the overall program in half as much time as this (but a separate
+chapter of this book looks at conurrency, and the possibility for parallelism
+is not always easy or possible).
+
+Let's suppose that we have a function called `get_word()` that will return a
+word each time it is called, generally different words on different calls.
+For example, this function might be responding to data sent over a wire in
+some manner, or calculated dynamically based on something else about the state
+of the program.  For this toy function, if `get_word()` returns `None`, its
+data source is depleted; moreover, a "word" for purpose of this example is a
+sequence of ASCII lowercase letters only.
+
+It is straightforward, and commonplace, to write code similar to this:
+
+.Creating a list from generated items
+[source,python]
+----
+# source = <some identifier for how we generate data>
+words = []
+while True:
+    word = get_word(src=source)
+    if word is None:
+        break
+    words.append(word)
+
+print(f"{len(words):,}") # -> 267,752
+----
+
+Readers of other discussions in this book might recognize the number of words
+generated, and guess the implementation of `get_word()` from that.  But let's
+assume that the number of words and what they are can vary across each program
+run, and can, moreover, vary across multiple orders of magnitude.
+
+In a bit of crude numerology, we assign a magic number to each word simply by
+valuing 'a' as 1, 'b' as 2, and so on through 'z' as 26, and adding those
+value.  This particular transformation isn't important, but the idea of
+"calculate a value from each datum" is very commonplace.  The function we
+use for this calculation is:
+
+.Numerological word magic number
+[source,python]
+----
+def word_number(word):
+    magic = 0
+    for letter in word:
+        magic += 1 + ord(letter) - ord('a')
+    return magic
+----
+
+We might visualize the distribution of these numerological values, as in
+Figure 1.1:
+
+[source,python]
+----
+# words = <regenerated list from another source>
+import matplotlib.pyplot as plt                    # (1)
+plt.plot([word_number(word) for word in words])
+plt.title(f"Magic values of {len(words):,} generated words")
+plt.show()
+----
+
+(1) `pip install matplotlib` or `conda install matplotlib`
+
+.Magic values of generated words
+image::images/Numerology.png[]
+
+Assuming all we care about is this final generated chart, there is no reason
+we needed to instantiate the full collection of words, but only their magic
+numbers.  Admittedly, the toy example is too simple to show the full advantage
+of the refactoring, but a sensible approach is to lazily construct a generator
+of only the data we actually care about, and only utilize the intermediate
+data as it is needed. For example, this code produces the similar Figure 1.2:
+
+.Lazily calculating only what is needed within a generator
+[source,python]
+----
+def word_numbers(src):
+    while (word := get_word(src=src)) is not None:
+        yield word_number(word)
+        
+# source2 = <some different identifier for data source>
+magic_nums = list(word_numbers(source2))
+plt.plot(magic_nums)
+plt.title(f"Magic values of {len(magic_nums):,} generated words")
+plt.show()
+----
+
+.More magic values of generated words
+image::images/Numerology2.png[]
+
+The example shown here still needed to instantiate the list of numbers, but
+not the list of actual words.  If "words" were some much larger,
+memory-consuming object, this change would become more significant.  For many
+scenarios, exclusively incrementally processing each value from a generator
+individually, with no intermediate collection at all, will suffice, and save
+considerable memory.

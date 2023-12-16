@@ -1,0 +1,215 @@
+== Metaclasses
+
+This section leans into slightly more arcane areas of Python's design.  If
+you've seen metaclasses discussed, or if they are used in the codebases you
+work with, this is definitely for you.  If you haven't, it's still worth
+reading, but treat the topic as an amusement or an enlightenment, rather than
+as a necessity.  Libraries you use might use metaclasses, even if you are not
+aware of the fact; knowing more is always handy.
+
+Metaclasses push at the edge of the highly dynamic nature of Python.  Even
+class objects can themselves be created in different manners than their code
+describes by declaring a metaclass.  Moreover, the choice of metaclass can
+itself, in principle, be dynamically chosen.  Before we get to showing what
+metaclasses _can_ do, and showing why doing those things is usually a mistake,
+let's think about a comment from the early 2000s (when metaclasses were
+introduced) that stands the test of 20 years:
+
+.From the much-missed comp.lang.python Usenet newsgroup
+[quote,Tim Peters,Author of the Zen of Python]
+Metaclasses are deeper magic than 99% of users should ever worry about. If you
+wonder whether you need them, you don’t (the people who actually need them know
+with certainty that they need them, and don’t need an explanation about why).
+
+Around the same time as Tim Peters' quote, and not too long after they were
+introduced to Python, I wrote a number of articles about Python metaclasses
+(often in collaboration with Michele Simionato).  Unfortunately, I probably
+elicited the commission of many of the sins with metaclasses committed since.
+
+Although I would almost universally advise against using metaclasses, there
+are some prominent Python frameworks that make broad use of them (_cough_,
+_cough_, Django: https://www.djangoproject.com/).  Arguably, there _must be_
+occasions where they are the best approach to choose.  However, it's probably
+informative that Python's standard library `typing` module initially used
+metaclasses widely but subsequently moved away from their use (the module is
+largely the creation of Python creator Guido van Rossum).
+
+[NOTE]
+.The guts of a metaclass
+====
+Usually, when you create a class in Python, what you are doing "behind the
+scenes" is calling the constructor `type()`.  For example, here is a subclass
+of `tuple` (which needs to use +++<code>.__new__()</code>+++ rather than
++++<code>.__init__()</code>+++ because immutable tuples cannot be modified
+during initialization, when the instance already exists):
+
+[source,python]
+----
+>>> from math import sqrt
+>>> class Point2d(tuple):
+...     def __new__(self, x, y):
+...         return tuple.__new__(self, (x, y))
+...
+...     def distance(self):
+...         return sqrt(self[0]**2 + self[1]**2)
+...
+>>> point = Point2d(3, 4)
+>>> point
+(3, 4)
+>>> point.distance()
+5.0
+>>> point.__class__.__name__
+'Point2d'      
+----
+
+The very useful `collections.namedtuple` creates dynamically generated classes
+similar to `Point2d`. We _could_ write this instead like:
+
+[source,python]
+----
+>>> Point2d = type("Point2d", (tuple,),
+...                {"__new__": lambda self, x, y: 
+...                    tuple.__new__(self, (x, y)),
+...                 "distance": lambda self: 
+...                    sqrt(self[0]**2 + self[1]**2)})
+>>> point = Point2d(3, 4)
+>>> point.distance()
+5.0
+>>> point.__class__.__name__
+'Point2d'      
+----
+
+A metaclass is nothing but a class created using a subclass of `type` rather
+than `type` itself as the constructor of a class.footnote:[To be very
+pedantic, a metaclass does not strictly need to be a subclass of `type`.  In
+principle, any callable that takes as arguments a name, a tuple of bases, and
+a dictionary of attributes/methods, would work as a metaclass.  This could
+even be a plain function if it returned a class object.]  Or equivalently,
+every class definition (in regular format) could contain `metaclass=type` and
+retain the default behavior.
+====
+
+Let's take a look at a metaclass with an arguably good use.  Suppose you have
+a large code base, particularly one with some sort of plugin system in which
+components are dynamically loaded.  You'd like to be able to examine at
+runtime which classes have been created in this dynamic arrangment.
+
+.A metaclass to provide class registration and some plugins
+[source,python]
+----
+from math import sqrt
+import os
+import logging
+
+log_level = os.environ.get("APP_LOG_LEVEL", 20)
+logging.basicConfig(filename='app.log', level=log_level)
+
+class PluginLoggerMeta(type):                      # (1)
+    def __init__(cls, name, bases, attrs):
+        logging.info(f"Registering: {name}"
+                     f"({', '.join(b.__name__ for b in bases)}): "
+                     f"\n  contains: {', '.join(attrs.keys())}")
+
+class Plugin(metaclass=PluginLoggerMeta):
+    pass
+
+if True:                                           # (2)
+    class Point2d(tuple, Plugin):
+        def __new__(self, x, y):
+            return tuple.__new__(self, (x, y))
+
+        @property
+        def distance(self):
+            return sqrt(self[0]**2 + self[1]**2)
+
+if not False:                                      # (2)
+    class Point3d(tuple, Plugin):
+        def __new__(self, x, y, z):
+            return tuple.__new__(self, (x, y, z))
+
+        @property
+        def distance(self):
+            return sqrt(self[0]**2 + self[1]**2 + self[2]**2)
+
+print(Point2d(4, 5).distance, Point3d(3, 5, 7).distance)
+----
+
+(1) Inherited from, not a metaclass of type.
+
+(2) In production some other external condition.
+
+This arrangement _works_, and logging registered plugins is a perfectly
+reasonable goal.  Let's take a look:
+
+----
+[BetterPython]$ python code/metaclass.py
+6.4031242374328485 9.1104335791443
+[BetterPython]$ cat app.log
+INFO:root:Registering: Plugin():
+  contains: __module__, __qualname__
+INFO:root:Registering: Point2d(tuple, Plugin):
+  contains: __module__, __qualname__, __new__, distance
+INFO:root:Registering: Point3d(tuple, Plugin):
+  contains: __module__, __qualname__, __new__, distance
+----
+
+However, this use of metaclasses is simply *more fragile* than other
+approaches to accomplishing the same thing.  Since our convention for plugins
+requires adding _something_, such as inheriting from `Plugin` to work, we
+could just as easily require something else.  
+
+For example, a decorator like `@register_plugin` could just as well be
+required by the framework using plugins.  All that decorator would need to do
+is log information about the class object, then return the class unchanged.
+For example:
+
+[source,python]
+----
+def register_plugin(cls):
+    logging.info(f"Registering: {cls.__name__} ...")
+    return cls
+----
+
+As used, we'd see something like (depending on configuration of `logging`):
+
+[source,python]
+----
+>>> @register_plugin
+... class TestClass: pass
+Registering: TestClass ...
+----
+
+Likewise, if you wanted to use inheritance, rather than using a metaclass, you
+could simply include a logging +++<code>.__new__()</code>+++ within the
+`Plugin` class.  But why isn't this simply a minor style preference? Here's
+one of the numerous places where the fragility of metaclasses comes out:
+
+[code,python]
+----
+>>> class NullMeta(type):
+...     pass
+...
+>>> class NullBase(metaclass=NullMeta):
+...     pass
+...
+>>> class MyStuff(Plugin, NullBase):
+...     pass
+...
+Traceback (most recent call last):
+      class MyStuff(Plugin, NullBase):
+TypeError: metaclass conflict: the metaclass of a derived class must 
+      be a (non-strict) subclass of the metaclasses of all its bases
+----
+
+The error message is pretty good, but in essence the problem is that `Plugin`
+and and `NullBase` imply different metaclasses to be used for class creation
+(`PluginLoggerMeta` and `NullMeta`, respectively), and Python cannot decide
+which one to use.  There is a solution in creating a custom metclass
+descending from both metaclasses, but this becomes thorny and arcane quickly.
+
+If custom metaclasses become commonplace in your code, conflict during
+multiple inheritance become almost inevitable.  This is a danger that might be
+justified if it did something you couldn't do otherwise.  However, as shown
+above, class decorators are almost always cleaner, more readable, and can
+accomplish either absolutely or very nearly _everything_ that custom
+metaclasses can.

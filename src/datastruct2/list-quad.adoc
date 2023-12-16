@@ -1,0 +1,194 @@
+== Quadratic Behavior Of Repeated List Search
+
+In Python, the `in` keyword is a very flexible way of looking for "membership"
+in an object, most often some sort of container.  Behind the scenes, the
+keyword `in` is calling the +++<code>.__contains__(self, elem)</code>+++
+method of the object that potentially has something "inside" it.
+
+Bear with me for a few paragraphs while I discuss the behavior of `in`, and
+before I get to the quadratic behavior gotcha one can encounter using lists. I
+believe a deeper undertanding of the mechanisms of "containment" will help
+many developers who might have only an approximate mental model of what's
+going on.
+
+A great many kinds of objects—some that might seem unexpected—respond to `in`.
+For example:
+
+.RegeExFlag can check for membership
+[source,python]
+----
+>>> import re
+>>> flags = re.VERBOSE | re.IGNORECASE | re.DOTALL | re.UNICODE
+>>> type(flags)
+<flag 'RegexFlag'>
+>>> re.U in flags
+True
+>>> type(re.M)
+<flag 'RegexFlag'>
+----
+
+In a commonsense way, the flag `re.U` (which is simply an alias for
+`re.UNICODE` is _contained_ in the mask of several flags.  A single flag is
+simply a mask that indicates only one operational `re` modifier.  Moreover, a
+few special objects that are not collections but iterables, also respond to
+`in`.  For example, `range` is special in this way.
+
+.Exploring what a range is
+[source,python]
+----
+>>> import collections
+>>> r = range(1_000_000_000_000)                   # (1)
+>>> isinstance(r, collections.abc.Collection)
+True
+>>> r[:10]                                         # (2)
+range(0, 10)
+>>> r[999_999_999_990:]                                
+range(999999999990, 1000000000000)
+>>> f"{r[999_999_999_990:][5]:,}"                  # (2)
+'999,999,999,995'
+----
+
+(1) Ostensibly, this is a very large collection; in truth it is a very compact
+representation that doesn't actually _contain_ a trillion integers, only the
+endpoints and step of the range.
+
+(2) A number of clever shortcuts exist in the implementation of the `range`
+object, generally producing what we "expect."
+
+Part of the cleverness of `range` is that it does not need to do a linear
+search through its items, even though it is in many respects list-like. A
+range object behaves like a realized list in most ways, but only _contains_
+anything in a synthetic sense.  In other words, `range(start, stop, step)` has
+an internal representation similar to its call signature, and operations like
+a slice or a membership test are calculated using a few arithmetic operations.
+For example `n in my_range` can simply check whether `start <= n < stop` and
+whether `(n-start) % step == 0`.
+
+.Timing the efficiency of range
+[source,python]
+----
+>>> %timeit 10 in r
+54 ns ± 0.85 ns per loop (mean ± std. dev. of 7 runs, 10,000,000 loops each)
+>>> %timeit 999_999_999_995 in r
+77 ns ± 0.172 ns per loop (mean ± std. dev. of 7 runs, 10,000,000 loops each)
+----
+
+The time to check for membership of an element near the "start" of a range is
+almost identical to that to check for membership of an element near the "end"
+because Python is not actually _searching_ the members.
+
+Lists are a concrete and ordered collection of elements that are very fast to
+append to, and have a few other internal optimizations.  However, we have to
+watch where the _ordered_ part might bite us.  The only generic way to tell if
+an element is contained in a list is to do a linear search on the list.  We
+might not find it until near the end of the search, and if it isn't there, we
+will have had to search the entire list.
+
+[NOTE]
+We can use the `bisect` module in the standard library if we wish to speed
+this greatly for lists we are happy to keep in sorted order (which is not all
+of our lists, however).  The `sortedcontainers` third-party library
+(https://grantjenks.com/docs/sortedcontainers/) also provides similar speedup
+when we can live with the mentioned constraint.
+
+We can see where checking containment within a list becomes unwieldy with a
+simple example.  I keep a copy of the 267,752 word SOWPODS
+(https://en.wikipedia.org/wiki/Collins_Scrabble_Words) English wordlist on my
+own system. We can use that as an example of a moderately large list (of
+strings, in this case).
+
+.Searching the SOWPODS wordlist
+[source,python]
+----
+>>> words = [w.rstrip() for w in open('data/sowpods')]
+>>> len(words)
+267752
+>>> import random
+>>> random.seed(42)
+>>> most_words = random.sample(words, k=250_000)   # (1)
+>>> %timeit "zygote" in most_words
+2.8 ms ± 147 µs per loop (mean ± std. dev. of 7 runs, 100 loops each)
+>>> %timeit "zebra" in most_words
+200 µs ± 12.2 µs per loop (mean ± std. dev. of 7 runs, 1,000 loops each)
+>>> %timeit "aardvark" in most_words
+172 µs ± 776 ns per loop (mean ± std. dev. of 7 runs, 10,000 loops each)
+>>> %timeit "coalfish" in most_words
+10.7 ms ± 163 µs per loop (mean ± std. dev. of 7 runs, 100 loops each)
+----
+
+(1) The words are genuinely shuffled in the random sampling.
+
+We can see that both "aardvark" and "zebra" take a fairly modest 200
+microseconds to search.  Showing that the `most_words` list really is not
+ordered alphabetically, "zygote" takes over 10 times as long to find (but it
+_is_ found).
+
+However, "coalfish" (a genuine word in the full dictionary, closely related in
+Linnaean classification to pollocks) takes over 10 milliseconds because it is
+never found in the sampled list.
+
+For a one-off operation, 10 milliseconds is probabably fine.  But imagine we
+want to do something slightly more complicated.  The example is somewhat
+artificial, but one can realistically imagine wanting instead to compare lists
+of people's names or addresses for a degree of duplication—or e.g. of shotgun
+sampled nucleotide fragments from soil—in a real world situation.
+
+.Finding words from one collection in another collection
+[source,python]
+----
+>>> random.seed(13)
+>>> some_words = random.sample(words, k=10_000)
+>>> sum(1 for word in some_words if word not in most_words)
+649
+>>> %timeit sum(1 for word in some_words if word not in most_words)
+55.2 s ± 1.26 s per loop (mean ± std. dev. of 7 runs, 1 loop each)
+----
+
+Taking a full minute for this simple operation is terrible, and it gets worse
+quickly—at approximately an O(N²) rate (to be precise, it is  Ω(N×M) since it
+gets even worse as the hit rate goes down for specific data).footnote:bigO[The
+so-called "big-O" notation is commonly used in computer science when analyzing
+the complexity of an algorithm. Wikipedia has a good discussion at
+https://en.wikipedia.org/wiki/Big_O_notation.  There are multiple symbols used
+for slightly different characterizations of asymptotic complexity: O, o, Ω, ω,
+and Θ. Big-O is used most commonly, and indicates a worst-case behavior; Big-Theta
+indicates an asymptote for both worst-case and best-case; Big-Omega indicates
+a best-case behavior.  Small-o and Small-omega are used to express the
+somewhat more complex concepts of one function _dominating_ another rather
+than _bounding_ another.]
+
+What we show above is concise and superficially inuitive code to perform one
+linear scan of `most_words` for every word in `some_words`.  That is, we
+perform an O(N) scan operation M different times (where N and M are the sizes
+of the respective lists).  A quick clue you can use in spotting such pitfalls
+is to look for multiple occurrences of the `in` keyword in an expression or 
+within a suite.  Whether in an `if` expression or within a loop, the 
+complexity is similar.
+
+Fortunately, Python gives us a very efficient way to solve exactly this
+problem by using sets.
+
+.Efficiently finding words from one collection in another collection
+[source,python]
+----
+>>> len(set(some_words) - set(most_words))
+649
+>>> %timeit len(set(some_words) - set(most_words))
+43.3 ms ± 1.31 ms per loop (mean ± std. dev. of 7 runs, 10 loops each)
+----
+
+That's better than a 1000x speedup.  We can see that the result is exactly the
+same.  Even assuming we needed to concretely look at where those words occur
+within our lists rather than merely count them or see what they are, 649
+operations of `some_words.index(word)` is _comparatively_ cheap relative to
+the 3 orders of magnitude difference encountered (looking through the shorter
+list is far faster, and typically we find the different word after searching
+halfway).
+
+[NOTE]
+If the particular problem discussed is genuinely close to the one you face look
+toward the third-party module `pygtrie` (https://pypi.org/project/pygtrie/)
+which will probably get you even faster and more flexible behavior.  For the
+precise problem described, `CharTrie` is the class you'd want.  In general, the
+_trie_ data structure (https://en.wikipedia.org/wiki/Trie) is very powerful for
+a class of string search algorithms.

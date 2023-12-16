@@ -1,0 +1,36 @@
+#!/bin/bash
+
+chs="
+looping
+identity 
+core
+advanced
+philosophy
+datastruct
+datastruct2
+security 
+numeric
+"
+
+nChaps=0
+for ch in $chs; do
+    cd "src/$ch"
+    n=0
+    for f in $(ls | sort); do 
+        printf '%-18s' "$f"
+        printf '%+4s ' $(wc -w $f | sed 's/ .*$//')
+        grep "/$f" ../$ch.adoc | sed 's/include:://;s/leveloffset=//'
+        n=$((n+1))
+    done
+    nChaps=$((nChaps+1))
+    echo "+++ Chapter $ch: $n mistakes"
+    echo
+    cd - >/dev/null
+done
+echo "Chapter count: $nChaps"
+
+python bookstatus
+
+echo "Chapters with complete initial drafts:"
+grep '{intro.summary}' status.md | sed 's/{intro.summary}//;s/^#/  -/'
+

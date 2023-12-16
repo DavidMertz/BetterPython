@@ -1,0 +1,126 @@
+== Late Binding Of Closures
+
+The scoping behavior of Python can cause surprises for programmers coming from
+other dynamic programming languages.  An expectation of many developers is
+that if a function—including a `lambda` function—is created within a loop
+(including within the loop element of a list-, set-, dict-, or
+generator-comprehension), then the created function will utilize the value of
+a variable that exists at the time the function is created.
+
+However, Python _binds by name_ in this circumstance, rather than binding by
+value.  The value eventually utilized is the _final_ value a variable takes on
+at the time the closure function is eventually called.
+
+[NOTE]
+.So what is a closure, anyway?
+====
+This term "closure" is a bit of computer science lingo that, while important,
+might not be familiar to people new to programming or who have not studied
+theoretical aspects.  Don't worry, it's not as bad as it seems.
+
+In programming languages, a (lexical; i.e. nested scope) closure means that
+variables defined outside of the current scope of a function definition are
+"closed over." That is to say, the function itself in some manner captures
+those variables and they can continue to be used later when the function is
+called.
+
+As we will see, however, whereas many programming lanugage "capture" variables
+as their values, Python captures them as their names.
+====
+
+.Surprising behavior of functions created as closures
+[source,python]
+----
+>>> def make_adders(addends):
+...     funcs = []
+...     for addend in addends:
+...         funcs.append(lambda x: x + addend)     # (1)
+...     return funcs
+...
+>>> adders = make_adders([10, 100, 1000])          # (2)
+>>> for adder in adders:
+...     print(adder(5))
+...
+1005
+1005
+1005
+----
+
+(1) The `lambda` does nothing special here; using a `def adder` inner function
+definition produces the exact same behavior.
+
+(2) Notice that `adders` is a list of functions, each of which is called in
+the loop.
+
+In constrast, if we were to write a very closely analogous program in (fairly)
+modern JavaScript, the behavior is probably what we would expect.  Older
+JavaScript _does_ contain the keyword `function` that would be even more
+closely parallel with the Python version; but preference for "arrow functions"
+has become predominant over the last few years.
+
+.Less surprising behavior of JavaScript closures
+[source,javascript]
+----
+// Welcome to Node.js v18.10.0.
+> const make_adders = (addends) => {
+...     const funcs = [];
+...     for (const addend of addends) {
+...         funcs.push((x) => x + addend);
+...     };
+...     return funcs;
+... };
+undefined
+> const adders = make_adders([10, 100, 1000]);
+undefined
+> for (const adder of adders) {
+...     console.log(adder(5));
+... };
+15
+105
+1005
+undefined
+----
+
+In the JavaScript comparison, the `const` keyword is forcing "expected"
+scoping, but we can accomplish the same thing in Python by using keyword
+binding to force more obvious scoping.  To get the output that most
+newcomers—and probably most experienced Python developers as well—expect,
+force early binding by assigning default arguments:
+
+.Less surprising behavior of Python closures
+[source,python]
+----
+>>> def make_adders(addends):
+...     funcs = []
+...     for addend in addends:
+...         funcs.append(lambda x, *, _addend=addend: x + _addend)
+...     return funcs
+...
+>>> adders = make_adders([10, 100, 1000])          # (1)
+>>> for adder in adders:
+...     print(adder(5))
+...
+15
+105
+1005
+----
+
+(1) `adders` is a list of (lambda) function objects.
+
+We have required that only one positional argument is passed, and used a
+"private" name for the keyword argument.  Technically, of course, we could
+still override the behavior of the closure function though.
+
+[source,python]
+----
+>>> add10 = adders[0]
+>>> add10(5, 6)
+Traceback (most recent call last):
+  Cell In[272], line 1
+    add10(5, 6)
+TypeError: make_adders.<locals>.<lambda>() takes 1 positional 
+  argument but 2 were given
+
+>>> add10(5, _addend=6)
+11
+----

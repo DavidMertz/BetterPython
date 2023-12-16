@@ -1,0 +1,101 @@
+== `zip()` Simplifies Using Multiple Iterables
+
+As with many of the discussions in this section, let's look at a mistake that
+is mostly stylistic and one of code-clarity.  An unpythonic way of looping
+over multiple iterables, such as multiple lists, might look like the below.
+In the example, the several data files are information on 1255 NOAA monitored
+weather stations.
+
+.Parallel access to multiple lists of same length
+[source,python]
+----
+>>> from pprint import pprint
+>>> from pathlib import Path
+>>> from collections import namedtuple
+
+>>> Station = namedtuple("Station", 
+...     "name latitude longitude elevation")
+...
+>>> names = Path("station-names.txt").read_text().splitlines()
+>>> lats = Path("station-latitudes.txt").read_text().splitlines()
+>>> lons = Path("station-longitudes.txt").read_text().splitlines()
+>>> els = Path("station-elevations.txt").read_text().splitlines()
+>>> assert len(names) == len(lats) == len(lons) == len(els) == 1255
+
+>>> stations = []
+>>> for i in range(1255):
+...     station = Station(names[i], lats[i], lons[i], els[i])
+...     stations.append(station)
+...
+>>> pprint(stations[:4])
+[Station(name='JAN MAYEN NOR NAVY', latitude='70.9333333',
+    longitude='-8.6666667', elevation='9.0'),
+ Station(name='SORSTOKKEN', latitude='59.791925', 
+    longitude='5.34085', elevation='48.76'),
+ Station(name='VERLEGENHUKEN', latitude='80.05', 
+    longitude='16.25', elevation='8.0'),
+ Station(name='HORNSUND', latitude='77.0', 
+    longitude='15.5', elevation='12.0')]
+----
+
+The assertion in the example checks that all these files indeed have the same
+number of data.  More robust error handling is possible, of course.  The use
+of `pathlib` in the example assures that files are closed after they are read
+in.  Using `pathlib` gives you a similar guarantee about proper cleanup as
+does using context managers, which are discussed in _The A Grab Bag Of Python
+Gotchas Programming Language_ chapter.
+
+The prior code is not terrible, but it can be made more Pythonic.  As one
+improvement, we can notice that open files handles are themselves iterable.
+As the main point, we do not need intermediate lists to perform this action,
+nor do we need to separately access corresponding index position within each.
+This calls back to several mistakes discussed in this section of focusing on
+_where_ a datum occurs in a colleciton rather than directly on the data
+itself.
+
+Cleaner code to build a list of station data namedtuples might look like:
+
+.Using `zip()` to read multiple open files
+[source,python]
+----
+>>> stations = []
+>>> with (                                         # (1)
+...     open("station-names.txt") as names,
+...     open("station-latitudes.txt") as lats,
+...     open("station-longitudes.txt") as lons,
+...     open("station-elevations.txt") as els,
+... ):
+...     for data in zip(names, lats, lons, els):
+...         data = (field.rstrip() for field in data)
+...         stations.append(Station(*data))
+...
+>>> assert len(stations) == 1255
+>>> pprint(stations[:4])
+[Station(name='JAN MAYEN NOR NAVY', latitude='70.9333333',
+    longitude='-8.6666667', elevation='9.0'),
+ Station(name='SORSTOKKEN', latitude='59.791925', 
+    longitude='5.34085', elevation='48.76'),
+ Station(name='VERLEGENHUKEN', latitude='80.05', 
+    longitude='16.25', elevation='8.0'),
+ Station(name='HORNSUND', latitude='77.0', 
+    longitude='15.5', elevation='12.0')]
+----
+
+(1) Parenthesized context managers were introduced in Python 3.10.
+
+The aesthetics of having to strip the extra newlines from the file iterators
+isn't ideal, but overall this code is just as safe (in terms of guaranteeing
+closed files), only holds one datum from each file in memory at a given time,
+and is more concise and expressive.  The extra names remain within the
+namespace, but they are merely closed files that take minimal memory:
+
+[source,python]
+----
+>>> names
+<_io.TextIOWrapper name='station-names.txt' mode='r' encoding='UTF-8'>
+>>> next(names)
+Traceback (most recent call last):
+[...]
+ValueError: I/O operation on closed file.
+----
+

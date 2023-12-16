@@ -1,0 +1,259 @@
+== Directly Accessing A Protected Attribute
+
+It is (usually) a mistake to access "protected" names outside of the class or
+module that defines them for its own use.  Python itself provides no
+programmatic limitation about this, and it can be very tempting to utilize
+these members directly simply because it is so easy.  You should avoid doing
+this.  A great deal of Python code, however, fails to utilize this advice, and
+often later breaks as a result.
+
+Python has a convention that names that live inside namespaces—whether inside
+modules, classes, or other objects that define namespaces—can use one or two
+leading underscores to declare those names "protected" or "private" (in
+analogy with languages like C++ and Java.  In a very approximate way, one
+leading underscore is more like _protected_ and two leading underscores is
+more like _private_; but this is a weak analogy at most.
+
+Python also has a convention of using "dunder" names which have both leading
+and trailing double underscores.  For those, you should *never* use those
+names other than for their documented purpose of overriding some operator or
+supporting some built-in and standard library function.  
+
+It's just barely permissible for genuine _frameworks_ to invent their own
+dunders for private use; but even there, I'd advise framework creators to
+avoid that pattern.  For example, you should absolutely override
++++<code>.__lshift__()</code>+++ or +++<code>.__call__()</code>+++ if that is
+relevant for your class, but try to avoid inventing
++++<code>.__modify__()</code>+++ in your own code, if for no other reason than
+that some future version of Python might discover a need for that name.
+
+Creators of modules and classes commonly follow a convention of using
+attribute names that begin with underscores as a way of telling users "don't
+use this attribute directly."  Those developers cannot _enforce_ that request
+upon users downstream, but the intention is made clear.
+
+As an example, let's write a `LinearCongruentialGenerator` (LCG) class (see
+https://en.wikipedia.org/wiki/Linear_congruential_generator) with reasonable
+behavior and code.  In the chapter on _Security_ in the section about _Kinds
+of randomness_ I discuss in much more detail Python's actual pseudo-random
+generator (PRG), the Mersenne Twister.  Suffice it to say that LCGs are less
+good PRGs than what Python provides you; but LCGs were and are used in actual
+production software PRGs, so they aren't absurdly bad (depending on
+configuration of parameters).
+
+.Class implementation of a linear congruential generator
+[source,python]
+----
+class LinearCongruentialGenerator:
+    def __init__(self, seed: int = 123):           # (3)
+        self.__seed: int = seed                    # (1)
+        self._multiplier: int = 1_103_515_245      # (2)
+        self._modulus: int = 2**32                 # (2)
+        self._increment: int = 1                   # (2)
+
+        # Simple constraints we should follow
+        assert 0 < self._modulus
+        assert 0 < self._multiplier < self._modulus
+        assert 0 <= self._increment < self._modulus
+        assert 0 <= seed < self._modulus
+
+        # One initial application of recurrence relation
+        self._state = (
+            (self._multiplier * self.__seed + self._increment)
+            % self._modulus)
+
+    @property
+    def seed(self):
+        return self.__seed
+
+    def next(self):
+        # Increment the state
+        self._state = (
+            (self._multiplier * self._state + self._increment)
+            % self._modulus)
+        return self._state / self._modulus
+----
+
+(1) "Private" attribute.
+
+(2) "Protected" attribute.
+
+(3) Type annotation are not runtime enforced but document intention.
+
+This class will produce a pretty good sequence of pseudo-random numbers, each
+between 0 (closed) and 1 (open), and a different such sequence for nearly
+every different integer seed below `2**32`.  Let's take a quick look at using
+this class:
+
+[source,python]
+----
+>>> lcg = LinearCongruentialGenerator(456)
+>>> [lcg.next() for _ in range(8)]
+[0.9508262551389635, 0.8921057728584856, 0.5018460648134351,
+0.16488368925638497, 0.7462635268457234, 0.6617225247900933,
+0.06575838476419449, 0.07386434846557677]
+>>> lcg2 = LinearCongruentialGenerator(9876)
+>>> [lcg2.next() for _ in range(8)]
+[0.9167962749488652, 0.9652843165677041, 0.09186752885580063,
+0.6128534006420523, 0.5585974934510887, 0.8420640060212463,
+0.9102171016857028, 0.9698882394004613]
+----
+
+For our purposes, we are happy for users to be able to examine the seed used
+by a given generator, but definitely do not want them to modify the
+(purported) seed.
+
+[source,python]
+----
+>>> lcg.seed
+456
+>>> lcg.seed = 789
+Traceback (most recent call last):
+[...]
+AttributeError: property 'seed' of 'LinearCongruentialGenerator' 
+  object has no setter
+----
+
+This pattern of using a read-only property to access a "private" attribute is
+a good one to follow.  As creator, I want instances of my class always to
+honestly report the seed that was used to initialize them.
+
+Those attributes that only begin with a single underscore ("protected") are
+not quite as sensitive.  You _might_ be able to change them an allow the
+functionality to remain "reasonable" (but you might not be so able).
+
+[source,python]
+----
+>>> lcg3 = LinearCongruentialGenerator(456)
+>>> [lcg3.next() for _ in range(3)]                # (1)
+[0.9508262551389635, 0.8921057728584856, 0.5018460648134351]
+
+>>> lcg3._multiplier = 22695477                    # (2)
+>>> [lcg3.next() for _ in range(3)]
+[0.8215138253290206, 0.1279368051327765, 0.818344411207363]
+
+>>> lcg3._multiplier = 0                           # (3)
+>>> [lcg3.next() for _ in range(2)]
+[2.3283064365386963e-10, 2.3283064365386963e-10]
+----
+
+(1) Initial numbers based on seed are reproducible.
+
+(2) Reasonable multiplier, but breaks reproducibility from seed.
+
+(3) Bad choice of multiplier badly breaks the generator.
+
+In the example, the _very bad_ multiplier of zero causes the generator to
+produce the same fixed number forever.  However, other bad choices can merely
+weaken the distribution.  The specific details of good multiplier, modulus,
+and increment gets into relatively heavy number theory, with primality,
+relative primality, the divisibility of the multiplier by 4 specifically, and
+other factors, coming into play.  In other words, the ordinary users of the
+class probably do not know the relevant considerations and should not touch
+these attributes.
+
+[NOTE]
+.The first rule of underscores is "don't talk about name-mangling"
+====
+Python initial double underscores have a dirty little secret.  They are *not*
+truly private and users can get at them if they know about name-mangling.
+Let's take a look:
+
+[source,python]
+----
+>>> lcg.__seed
+Traceback (most recent call last):
+[...]
+AttributeError: 'LinearCongruentialGenerator' object has no 
+  attribute '__seed'
+
+>>> lcg._LinearCongruentialGenerator__seed
+456
+>>> lcg._LinearCongruentialGenerator__seed = 123
+>>> lcg.seed
+123
+----
+
+If you ever find yourself breaking through the privacy of names this way, you
+are making a mistake or are an actual core developer of a Python framework.
+However, it can certainly be both things.
+====
+
+The other danger with using private or protected attributes is that the author
+of a module or library is explicitly _not_ promising they will continue to
+exist in the next version of that software.  They may very reasonably decide
+to redesign or refactor their code, and only maintain backward compatibility
+with documented interfaces; such as `lcg.seed` and `lcg.next()` in the example
+class.
+
+Perhaps as author of my LCG, I decide that I definitely want to use a
+power-of-two modulus.  This is hard-coded into the implementation shown, but a
+subclass, for example, might change that but preserve the official APIs.
+Given this decision, I might change my implementation to:
+
+[source,python]
+----
+class LinearCongruentialGenerator:
+    def __init__(self, seed: int=123):
+        self.__seed: int = seed
+        self._multiplier: int = 1_103_515_245
+        self._modpow: int = 32
+        self._increment: int = 1
+
+    # ...other code...
+
+    def next(self):
+        # Increment the state
+        self._state = (
+            (self._multiplier * self._state + self._increment)
+            % 2**self._modpow)
+        return self._state / self._modulus
+----
+
+This new implementation has *all* the same documented behaviors.  Given the
+same seed, the new implementation will produce exactly the same sequence of
+numbers from the PRN generator.  However, the protected attribute `._modulus`
+has simply stopped existing in this version.  A downstream user who improperly
+relied on that attribute, even simply to check its value, would find their
+code broken by the change.  If their code actually modified the protected
+attribute, the failure could be less obvious since Python instances can attach
+attributes that are unused for any purpose; changing `._modulus` would now
+have no affect on the sequence produced, again probably surprising the
+misbehaving downstream user.
+
+[NOTE]
+.Rules have occasional exceptions
+====
+There are a few odd corners where the advice in this section are properly
+violated, even within the Python standard library.  The most notable of these
+is:
+
+[source,python]
+----
+>>> from collections import namedtuple
+>>> Person = namedtuple("Person", "first last handedness")
+>>> david = Person("David", "Mertz", "Left")
+>>> david
+Person(first='David', last='Mertz', handedness='Left')
+>>> david._fields
+('first', 'last', 'handedness')
+>>> david._asdict()
+{'first': 'David', 'last': 'Mertz', 'handedness': 'Left'}
+----
+
+The special problem `namedtuple` had to solve is that _anything_ could be an
+attribute of a constructed special object, such as `Person`.  For some
+`namedtuple` classes, a field called `.fields` might be perfectly reasonable
+(perhaps less so one called `.asdict`).
+
+For this situation—and a very few others—the actual documented and promised
+API for `namedtuple` includes having several attibutes and methods whose names
+begin with a single underscore.
+====
+
+As a final thought, I will mention that modules are much like classes in regard
+to leading underscores.  Often modules will have such private or protected
+names inside them.  The mechanism of `import` makes these slightly less
+accessible, but not completely invisible.  Nonetheless, if a module author has
+requested that you not use certain names, you should believe them, and only
+use the documented and exported names.

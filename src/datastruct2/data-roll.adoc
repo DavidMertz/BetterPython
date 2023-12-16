@@ -1,0 +1,423 @@
+== Rolling Your Own Data Structures 
+
+This section covers a nuanced issue (and a long one).  Readers who have come
+out of a college data structures course, or read a good book on the
+topic,footnote:[Perhaps even Donald Knuth's "bible": _The Art of Computer
+Programming_, on Addison-Wesley (various years, editions, and ISBNs among its
+current 4.5 volumes; but especially 3rd edition of volume 1, 1997, ISBN
+978-0201896831).] have learned of many powerful data structures which are
+neither within Python's standard library nor in the prominent third-party
+libraries I discuss in various parts of this book.  Some of these include
+treaps, k-d trees, R-trees, B-trees, Fibonacci heaps, tries (prefix tree),
+singly-, doubly-, and multiply-linked lists, heaps, graphs, bloom filters,
+cons cells, and dozens of others.
+
+The choice of which data structures to include as built-ins, or in the
+standard library, is one that language designers debate, and which often leads
+to in-depth discussion and analysis.  Python's philosophy is to include a
+relatively minimal, but extremely powerful and versatile collection of
+primitives with `dict`, `list`, `tuple`, `set`, `frozenset`, `bytes`, and
+`bytearray` in +++<code>__builtins__</code>+++ (arguably, `complex` is a
+simple data structure as well).  Modules such as `collections`, `queue`,
+`dataclasses`, `enum`, `array`, and a few others peripherally, include other
+data structures, but even there the number is much smaller than for many
+programming languages.
+
+A clear contrast with Python, in this regard, is Java.  Whereas Python strives
+for simplicity, Java strives to include every data structure users might ever
+want within its standard library (i.e. the `java.util` namespace).  Java has
+hundreds of distinct data structures included in the language itself.  For
+Pythonic programmers, this richness of choice largely leads only to "analysis
+paralysis" (https://en.wikipedia.org/wiki/Analysis_paralysis).  Choosing among
+so many only-slightly-different data structures imposes a large cognitive
+burden, and the final decision made (after greater work) often remains
+sub-optimal.  Giving someone more hammers can sometimes provide little other
+than more to ways for them to hit their thumbs.
+
+[NOTE]
+.A data structure that hasn't quite made it into Python
+====
+A really lovely example of the design discussions that go into Python is in
+PEP 603 (https://peps.python.org/pep-0603/) and the python-dev mailing list
+and Discourse thread among core developers that followed this PEP.  The
+proposal of a new data structure has not been entirely rejected since
+September 2019, but it also has not been accepted so far.
+
+Internally, CPython utilizes a data structure called a Hash Array Mapped Trie
+(HAMT).  This isn't used widely, but there are specific places in the C code
+implementing CPython where it is the best choice.  A HAMT is a kind of
+immutable dictionary, in essence.  Since this structure _already exists_ in
+the CPython codebase, it would be relatively easy to expose it under a name
+like `frozenmap` or `frozendict`; this would parallel the existing `frozenset`
+and `tuple` in being the "immutable version of built-in mutable collections."
+
+HAMT is clearly a useful data structure for some purposes. If it were not, the
+very talented CPython developers would not have utilized it.  However, the
+current tide of opinion among these developers is that HAMT is not general
+purpose enough to add to the cognitive load of tens of millions of Python
+developers who _probably won't need it_.
+====
+
+=== When Rolling Your Own Is A Bad Idea
+
+Writing any of the data structures mentioned above is comparatively easy in
+Python.  Doing so is often the subject of college exams and software
+engineering interviews, for example.  Doing so is also _usually_ a bad idea for
+most software tasks you will face.  When you reach quickly for an opportunity
+to use one of these data structures you have learned—each of which genuinely
+_does_ have concrete advantages in specific contexts—it often reflects an
+excess of cleverness and eagerness more than it does good design instincts.
+
+A reality is that Python itself is a relatively slow bytecode interpreter.
+Unlike compiled programming languages, including just-in-time compiled
+languages, which produce machine-native instructions, CPython is a giant
+bytecode dispatch loop.  Every time an instruction is executed, many levels of
+indirection are needed, and basic values are all relatively complex wrappers
+around their underlying data (remember all those methods of datatypes that you
+love so much?).
+
+[NOTE]
+====
+Several alternative implementations of Python exist besides CPython.  In
+particular, a few of these include just-in-time (JIT) compilation.  The most
+widely used such implementation is PyPy (https://www.pypy.org/) which JITs
+everything, and does so remarkably well.  Its main drawbacks are that it has
+fallen behind version compatibility with CPython, and that using compiled
+extensions created for CPython can encounter overheads that reduce the speed
+advantages greatly.
+
+Less widely used attempts at JIT Python interpreters include Pyston
+(https://github.com/pyston/pyston), Cinder
+(https://github.com/facebookincubator/cinder), and Pyjion
+(https://github.com/tonybaloney/Pyjion).  While each of these has good ideas
+within them—and all are derived from CPython source code (unlike PyPy)—these
+open source projects still largely have a focus within the private companies
+that developed them.  Those are Dropbox, Meta, and Microsoft, respectively
+(Alphabet—i.e. Google—subsidiary DeepMind abandoned its similar S6 project).
+
+Reservations mentioned, it is well possible that a custom data structure
+developed as pure-Python but used in a JIT interpreter will achieve the speed
+and flexibility advantages that those developed in compiled languages have.
+====
+
+Accompanying the fact that Python is relatively slow, most of the built-in
+and standard library data structures you might reach for are written in highly
+optimized C.  Much the same is true for the widely used library NumPy, which
+has a chapter of its own.
+
+On the one hand, custom data structures such as those mentioned can have
+significant big-O complexity advantages over those that come with
+Python.footnote:bigO[]  On the other hand, these advantages need to be
+balanced against what is usually a (roughly) constant multiplicative
+disadvantage to pure-Python code.  That is to say, implementing the identical
+data structure purely in Python is likely to be 100x, or even 1000x, slower
+than doing so in a well-optimized compiled language like C, C++, Rust, or
+Fortran.  At some point as a dataset grows, big-O dominates any multiplicative
+factor, but often that point is well past the dataset sizes you actually care
+about.
+
+Plus, writing a new data structure requires actually writing it.  This is
+prone to bugs, takes developer time, needs documentation, and accumulates
+technical debt.  In other words, doing so might very well be a mistake.
+
+=== When Rolling Your Own Is A Good Idea
+
+Taking all the warnings and caveats of the first subsection of this discussion
+into account, there remain many times when *not* writing a custom data
+structure is its own mistake.  Damned if you do, damned if you don't, one
+might think.  But the real issue is more subtle; it's a mistake to make a
+poor judgment about which side of this decision to choose. 
+
+I present below a "pretty good" specialized data structure that illustrates
+both sides.  This example is inspired by the section "Deleting or adding
+elements to the middle of a list" earlier in this chapter.  To quickly
+summarize that section: inserting into the middle of a Python list is
+inefficient, but doing so is very often a matter of _solving the wrong
+problem_.
+
+For now, however, let's suppose that you genuinely *do need* to have a data
+structure that is concrete, strictly ordered, indexable, iterable, and into
+which you need to insert new items in varying middle positions.  There simply
+is not any standard library or widely used Python library that gives you
+exactly this.  Perhaps it's worth developing your own.
+
+==== Always Benchmark When You Create A Data Structure
+
+Before I show you the code _I_ created to solve this specific requirement, I
+want to reveal the "punchline" by showing you performance.  A testing function
+shows the general behavior we want to be performant.
+
+.The `insert_many()` function that exercises our use case
+[source,python]
+----
+from random import randint, seed
+from get_word import get_word                      # (1)
+def insert_many(Collection, n, test_seed="roll-your-own"):
+    seed(test_seed)                                # (2)
+    collection = Collection()
+    for _ in range(n):
+        collection.insert(randint(0, len(collection)), get_word())
+    return collection
+----
+
+(1) The `get_word()` function available at this book's website is used in many
+examples.  It simply returns a different word each time it is called.
+
+(2) Using the same random seed assures that we do _exactly_ the same
+insertions for each collection type.
+
+The testing function performs however many insertions we ask it to, and we can
+time that:
+
+[source,python]
+----
+>>> from binary_tree import CountingTree
+
+>>> %timeit insert_many(list, 100)
+92.9 µs ± 742 ns per loop (mean ± std. dev. of 7 runs, 10,000 loops each)
+>>> %timeit insert_many(CountingTree, 100)
+219 µs ± 8.17 µs per loop (mean ± std. dev. of 7 runs, 1,000 loops each)
+
+>>> %timeit insert_many(list, 10_000)
+13.9 ms ± 193 µs per loop (mean ± std. dev. of 7 runs, 100 loops each)
+>>> %timeit insert_many(CountingTree, 10_000)
+38 ms ± 755 µs per loop (mean ± std. dev. of 7 runs, 10 loops each)
+
+>>> %timeit insert_many(list, 100_000)
+690 ms ± 5.84 ms per loop (mean ± std. dev. of 7 runs, 1 loop each)
+>>> %timeit insert_many(CountingTree, 100_000)
+674 ms ± 20.1 ms per loop (mean ± std. dev. of 7 runs, 1 loop each)
+
+>>> %timeit insert_many(list, 1_000_000)
+1min 5s ± 688 ms per loop (mean ± std. dev. of 7 runs, 1 loop each)
+>>> %timeit insert_many(CountingTree, 1_000_000)
+9.72 s ± 321 ms per loop (mean ± std. dev. of 7 runs, 1 loop each)
+----
+
+Without having yet said just what a `CountingTree` is, I can say that I spent
+more time ironing out the bugs in my code than I entirely want to admit.  It's
+not a large amount of code, as you'll see, but the details are futzy.
+
+Notable points are that even though I've created a data structure optimized
+for _exactly_ this task, it does worse than `list` for 100 items.
+`CountingTree`  does worse than `list` for 10,000 items also, even by a
+slightly larger margin than for 100.  However, my custom data structure pulls
+ahead _slightly_ for 100,000 items; and then _hugely_ so for a million items.
+
+It would be painful to use `list` for the million item sequence, and
+increasingly worse if I needed to do even more `collection.insert()`
+operations.
+
+==== Performing Magic In Pure-Python
+
+The source code for `binary_tree.py` is available at the book's website
+(https://gnosis.cx/better).  But we will go through most of it here.  The
+basic idea behind my _Counting Binary Tree_ data structure is that I want to
+keep a binary tree, but I also want each node to keep a count of the total
+number of items within it and all of its descendants.  Unlike some other tree
+data structures, we specifically _do not_ want to order the node values by
+their inequality comparison, but rather to maintain each node exactly where it
+is inserted.
+
+.A graph of a Counting Binary Tree
+image::images/CountingBinaryTree.svg[width=75%]
+
+In Figure 7.1, each node contains a value that is a single letter; in
+parentheses we show the _length_ of each node with its subtree.  Identical
+values can occur in multiple places (unlike, e.g., for a set or a dictionary
+key).  Finding the `len()` of this data structure is a matter of reading a
+single attribute.  But having this length available is what guides
+insertions.
+
+It is very easy to construct a _sequence_ from a tree.  It is simply a matter
+of choosing a deterministic rule for how to order the nodes.  For my code, I
+chose to use _depth-first, left-to-right_; that's not the only possible
+choice, but it is an obvious and common one.  In other words, every node value
+occurs at exactly one position in the sequence, and every sequence position
+(up to the length) is occupied by exactly one value.  Since our use case is
+approximately random insertion points for new items, no extra work is needed
+for rebalancing or enforcing any other invariants.
+
+The code shown _only_ implements insertions, our stated use case.  A natural
+extension to the data structure would be to implement deletions as well.  Or
+changing values at a given position.  Or other capabilities that lists and
+other data structures have.  Most of those capabilities would remain
+inexpensive, but details would vary by the specific operation, of course.
+
+.The basic implementation of `CountingBinaryTree`
+[source,python]
+----
+class CountingTree:
+    def __init__(self, value=EMPTY):
+        self.left = EMPTY
+        self.right = EMPTY
+        self.value = value
+        self.length = 0 if value is EMPTY else 1
+
+    def insert(self, index: int, value):
+        if index != 0 and not 0 < index <= self.length:
+            raise IndexError(
+                f"CountingTree index {index} out of range")
+
+        if self.value is EMPTY:
+            self.value = value
+        elif index == self.length:
+            if self.right is EMPTY:
+                self.right = CountingTree(value)
+            else:
+                self.right.insert(
+                    index - (self.left.length + 1), value)
+        elif index == 0 and self.left is EMPTY:
+            self.left = CountingTree(value)
+        else:
+            if index > self.left.length:
+                self.right.insert(
+                    index - (self.left.length + 1), value)
+            else:
+                self.left.insert(index, value)
+
+        self.length += 1
+----
+
+This much is all we actually need to run the benchmarks performed above.
+Calling `CountingTree.insert()` repeatedly creates trees much like that in the
+figure.  The `.left` and `.right` attributes at each level might be occupied
+by the sentinel `EMPTY` which the logic can utilize for nodes without a given
+child.
+
+It's useful also to define a few other behaviors we'd like a collection to
+have.  For example:
+
+.Additional methods within `CountingBinaryTree`
+[source,python]
+----
+    def append(self, value):
+        self.insert(len(self), value)
+
+    def __iter__(self):
+        if self.left is not EMPTY:
+            yield from self.left
+        if self.value is not EMPTY:
+            yield self.value
+        if self.right is not EMPTY:
+            yield from self.right
+
+    def __repr__(self):
+        return f"CountingTree({list(self)})"
+
+    def __len__(self):
+        return self.length
+
+    def tree(self, indent=0):
+        print(f"{'· '*indent}{self.value}")
+        if self.left is not EMPTY or self.right is not EMPTY:
+            self.left.tree(indent+1)
+            self.right.tree(indent+1)
+----
+
+These other methods largely just build off of `.insert()`.  A
+`CountingBinaryTree` is iterable, but along with
++++<code>.__iter__()</code>+++ it would be natural to define
++++<code>.__getitem__()</code>+++ or +++<code>.__contains__()</code>+++ to
+allow use of square bracket indexing and the `in` operator.  These would be
+straightforward.
+
+For the `.tree()` method we need our sentinel to have a couple specific
+behaviors.  This method is just for visual appeal in viewing the data
+structure, but it's nice to have.
+
+.The EMPTY sentinel
+[source,python]
+----
+# Sentinel for an unused node
+class Empty:
+    length = 0
+
+    def __repr__(self):
+        return "EMPTY"
+
+    def tree(self, indent=0):
+        print(f"{'· '*indent}EMPTY")
+
+EMPTY = Empty()
+----
+
+==== Observing The Behavior Of Our Data Structure
+
+By no means am I advocating the general use of this specific skeletal data
+structure implementation.  It's shown merely to illustrate the general way you
+might go about creating something analogous for well understood use cases and
+with a knowledge of the theoretical advantages of particular data structures.
+Let's look at a few behaviors though:
+
+[source,python]
+----
+>>> insert_many(CountingTree, 10)
+CountingTree(['secedes', 'poss', 'killcows', 'unpucker',
+'gaufferings', 'funninesses', 'trilingual', 'nihil', 'bewigging',
+'reproachably'])
+>>> insert_many(list, 10)                          # (1)
+['secedes', 'poss', 'killcows', 'unpucker', 'gaufferings',
+'funninesses', 'trilingual', 'nihil', 'bewigging', 'reproachably']
+
+>>> ct = insert_many(CountingTree, 1000, "david")
+>>> lst = insert_many(list, 1000, "david")
+>>> list(ct) == lst                                # (2)
+True
+
+>>> insert_many(CountingTree, 9, "foobar").tree()  # (3)
+loaf
+· acknown
+· · spongily
+· · · saeculums
+· · · EMPTY
+· · EMPTY
+· fecundities
+· · EMPTY
+· · input
+· · · boddle
+· · · · sots
+· · · · shrifts
+· · · EMPTY
+----
+
+(1) Insertions into `list` or `CountingTree` preserve the same order.
+
+(2) Equivalence for some operations between `list` and `CountingTree`.
+
+(3) Display the underlying tree implementing the sequence.
+
+The tree is fairly balanced, and sometimes a given subtree fills only one or
+the other of its left and right children.  This balance would be lost if, for
+example, we always used `.append()` (it would degenerate to a singly-linked
+list).
+
+=== Takeaways
+
+This section has had a long discussion.  The takeaway you should leave with
+isn't a simple one.  The lesson is "be subtle and accurate in your judgments"
+about when to create and when to avoid creating custom data structures.  It's
+not a recipe, but more vaguely an advocacy of a nuanced attitude.
+
+As a general approach to making the right choice, I'd suggest following a few
+steps in your thinking:
+
+[start=1]
+. Try implementing the code using a widely used, standard, Python data
+  structure.
+. Run benchmarks to find out if any theoretical sub-optimality _genuinely_
+  matters for the use case your code is put to.
+. Research the wide range of data structures that exist in the world to see
+  which, if any, are theoretically optimal for your use case.
+. Research whether someone else has already written a well-tested Python
+  implementation of the less common data structure you are considering.  Such
+  a library might not be widely used simply because the niche it fulfills is
+  relatively narrow.  On the other hand, it is also easy to put partially
+  developed, poorly tested, and buggy libraries on PyPI, conda-forge, GitHub,
+  GitLab, Bitbucket, or other public locations.
+. Assuming you are writing your own after after considering the above steps,
+  create both tests and benchmarks either in conjunction with—or even
+  before—the implementation of the data structure.
+. If your well-tested implementation of a new data structure makes your code
+  better, ask your boss for a raise or a bonus... and then share the code with
+  the Python community under an open source license.

@@ -1,0 +1,82 @@
+== Don't Iterate Over `dict.keys()` When You Want `dict.items()`
+
+There is a sense in which you can _almost_ think of Python lists as mappings
+from index positions to values.  Within a dictionary, integers are perfectly
+well able to act as keys; and hence `obj[7]` might equally well be an index
+into a `dict` (or other mapping) or an index into a `list` (or other
+sequence).
+
+In much the same way as you sometimes see unpythonic code that loops over the
+index positions of a list, but then looks up that index within the body, you
+also sometimes see unpythonic code that loops over `dict.keys()`.  Actually,
+back up just a bit: there are two stylistic mistakes that were just named.
+Imagine code like this:
+
+[source,python]
+----
+for key in my_dict.keys():
+    process(key, my_dict[key])
+----
+
+This is nonidiomatic in the first instance because  over `my_dict.keys()` is
+equivalent to looping over `my_dict` itself.  Behind the scenes, slightly
+different types of objects are produced, `dict_keys` for `my_dict.keys()` and
+`dict_keyiterator` from the dictionary itself.  However, little real code
+depends on this difference since they behave the same for most purposes.
+
+[source,python]
+----
+>>> my_dict = {c:ord(c) for c in "Bread and butter"}
+>>> type(my_dict.keys())
+<class 'dict_keys'>
+>>> type(iter(my_dict))
+<class 'dict_keyiterator'>
+----
+
+Specifically, the following identity will always apply, for every dictionary
+(unless, with great perversity, you could break this identity in a subclass of
+`dict` or in some custom mapping).
+
+[source,python]
+----
+>>> all(a is b for a, b in zip(iter(my_dict), iter(my_dict.keys())))
+True
+----
+
+In other words, if you wish to loop over keys, you should just write:
+
+[source,python]
+----
+for key in my_dict:
+    process(key, my_dict[key])
+----
+
+However, it is relatively uncommon to wish to loop _only_ over the keys of a
+dictionary.  Even if you only rarely, in one branch of the code, actually use
+the value, it costs nearly nothing to include it as a loop variable.
+Remember, Python objects are accessed by reference; you just assign a
+reference to an existing object by doing so, you don't copy or create an
+object.
+
+In other words, don't bother with:
+
+[source,python]
+----
+for key in my_dict:
+    if rare_condition(key):
+        val = my_dict[key]
+        process(key, val)
+----
+
+Simply write the clean, Pythonic code:
+
+[source,python]
+----
+for key, val = my_dict.items():
+    if rare_condition(key):
+        process(key, val)
+----
+
+This problem is one that linters are likely to warn about—as was probably the
+prior one about using `enumerate()`—but _understanding_ the mechanisms of
+loops goes further than just reading a warning.

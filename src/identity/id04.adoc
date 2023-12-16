@@ -1,0 +1,207 @@
+== Misunderstanding Mutable Default Arguments
+
+The behavior of mutable default arguments is surprising to many developers. In
+fact, many programmers—including many experienced Python developers—would
+describe it as simply a wart or anti-pattern of the language.footnote:[In a
+provacative blog post title, Florimond Manca declared in 2018 that "Python
+Mutable Defaults Are The Source of All Evil."  A great many other writers have
+given the same warning with somewhat less florid language.]
+
+I take a somewhat more sympathetic view of Python behavior around mutable
+values used as named arguments than do many of my colleagues; however, I will
+probably admit that my affection arises in overly large part from knowing the
+"trick" for a long time, and having written about it in more-or-less positive
+terms in 2001.  Moreover, in Python 2.1 where I first wrote about playing with
+this behavior, many alternatives that now exist had not yet entered the
+language.
+
+Let's look at a simple function to illustrate the issue.  We have several
+wordlist files on disk:
+
+[source,python]
+----
+>>> for fname in Path("data").glob("?-words.txt"):
+...     print(f"{fname}: {Path(fname).read_text().strip()}")
+...
+data/a-words.txt: acclimations airways antinarrative astrocyte
+data/b-words.txt: buggiest biros bushvelds begazed braunite
+data/z-words.txt: zonate zoophyte zumbooruk zoozoos
+----
+
+We would like to process the separate words within lists:
+
+.Read words from a file, arrange them in a list
+[source,python]
+----
+>>> def wordfile_to_list(fname, initial_words=[]):
+...     with open(fname) as words:
+...         initial_words.extend(words.read().split())
+...     return initial_words
+...
+>>> wordfile_to_list("data/z-words.txt", ["zlotys", "zappier"])
+['zlotys', 'zappier', 'zonate', 'zoophyte', 'zumbooruk', 'zoozoos']
+----
+
+So far, so good.  We might want to start with some initial list elements, but
+add more from a file.  Straightforward enough.  Let's try it again:
+
+.Read words from file to list, take two
+[source,python]
+----
+>>> wordfile_to_list("data/a-words.txt")
+['acclimations', 'airways', 'antinarrative', 'astrocyte']
+>>> wordfile_to_list("data/b-words.txt")
+['acclimations', 'airways', 'antinarrative', 'astrocyte', 
+'buggiest', 'biros', 'bushvelds', 'begazed', 'braunite']
+>>> wordfile_to_list("data/b-words.txt", ['brine'])
+['brine', 'buggiest', 'biros', 'bushvelds', 'begazed', 'braunite']
+----
+
+At the first pass of just reading `a-words.txt`, all seems well.  At the
+second pass or also reading in `b-words.txt` we notice with surprise that our
+results are becoming cummulative rather than calls being independent.
+However, it gets even weirder on the third pass in which reading in
+`b-words.txt` anew, but with some `initial_words` stops being cummulative
+again.
+
+Understanding what is occurring is not genuinely difficult once you think
+about the execution model of Python.  Keyword arguments are evaluated at
+definition time.  *All lines of Python*, within a given scope, are evaluated
+at definition time, so this is _should be_ unsurprising.  The list
+`initial_words` is defined once at definition time, and the same object gets
+extended during each call (unless a different object is substituted for a
+call).  But OK, I get it.  It's weird behavior.
+
+If we want statefulness in a function call (or in something equivalent) we
+have several good approaches to doing that which don't use the "immutable
+default value" _hack_.
+
+=== First Approach, Use A Class
+
+I like functional programming styles, but classes are great ways to
+encapsulate stateful behavior.
+
+.Class based stateful word reader
+[source,python]
+----
+>>> class Wordlist:
+...     def __init__(self, initial=[]):
+...         self._words = initial
+...
+...     def add_words(self, fname):
+...         self._words.extend(Path(fname).read_text().split())
+...
+...     def reset(self, initial=None):
+...         self._words = initial if initial is not None else []
+...
+...     def __repr__(self):
+...         return str(self._words)
+...
+>>> words = Wordlist(["microtubules", "magisterial"])
+>>> words
+['microtubules', 'magisterial']
+>>> words.add_words("data/b-words.txt")
+>>> words
+['microtubules', 'magisterial', 'buggiest', 'biros', 
+ 'bushvelds', 'begazed', 'braunite']
+>>> words.reset(["visioning", "virulency"])
+>>> words
+['visioning', 'virulency']
+>>> words.add_words("data/a-words.txt")
+>>> words
+['visioning', 'virulency', 'acclimations', 'airways', 
+ 'antinarrative', 'astrocyte']
+----
+
+You can easily tweak this API to your precise needs, but it clearly gets both
+statefulness and easy comprehensibility.
+
+=== Second Approach, Use A `None` Sentinel
+
+The most common "solution" you will read elsewhere is simply to use `None`
+rather than a mutable default, and put the initialization within a function
+body.  This keeps code in functions, which are often simpler than classes, and
+sticks with built-in collection types.
+
+.Sentinel `None` as function named parameter
+[source,python]
+----
+>>> def wordfile_to_list(fname, initial_words=None):
+...     words = [] if initial_words is None else initial_words
+...     with open(fname) as wordfile:
+...         words.extend(wordfile.read().split())
+...     return words
+...
+>>> words = wordfile_to_list("data/a-words.txt")
+>>> words
+['acclimations', 'airways', 'antinarrative', 'astrocyte']
+>>> words = wordfile_to_list("data/b-words.txt")
+>>> words
+['buggiest', 'biros', 'bushvelds', 'begazed', 'braunite']
+>>> words = wordfile_to_list("data/z-words.txt", words)
+>>> words
+['buggiest', 'biros', 'bushvelds', 'begazed', 'braunite', 
+ 'zonate', 'zoophyte', 'zumbooruk', 'zoozoos']
+----
+
+We can control statefulness in this design simply by deciding whether or not
+to pass in a current state to mutate or simply skip that argument for a fresh
+list result.
+
+=== Third Approach, Take Advantage Of Stateful Generators
+
+The final solution I will suggest is the one I've seen least often discussed
+in public fora.  At the same time, it's probably the one I like the best, and
+one that was not available in 2001 when I first started seeing hands wrung
+over the issue of mutable default parameters.
+
+.Generator based statefulness
+[source,python]
+----
+>>> def word_injector(initial_words=None):
+...     words = [] if initial_words is None else initial_words
+...     while True:
+...         fname = (yield words)
+...         if fname is not None:
+...             with open(fname) as wordfile:
+...                 words.extend(wordfile.read().split())
+...
+>>> words = word_injector(["microtubules", "magisterial"])
+>>> next(words)                                    # (1)
+['microtubules', 'magisterial']
+>>> words.send("data/a-words.txt")                 # (2)
+['microtubules', 'magisterial', 'acclimations', 'airways', 
+ 'antinarrative', 'astrocyte']
+>>> words.send("data/z-words.txt")                 # (2)
+['microtubules', 'magisterial', 'acclimations', 'airways', 
+ 'antinarrative', 'astrocyte', 'zonate', 'zoophyte', 'zumbooruk', 
+ 'zoozoos']
+>>> words2 = word_injector()
+>>> next(words2)                                   # (1)
+[]
+>>> words2.send("data/b-words.txt")                # (2)
+['buggiest', 'biros', 'bushvelds', 'begazed', 'braunite']
+>>> next(words2)                                   # (1)
+['buggiest', 'biros', 'bushvelds', 'begazed', 'braunite']
+----
+
+(1) A plain `next()` call will always simply retreive the current state of the
+word list.
+
+(2) Read about the `.send()` method on generators at
+https://docs.python.org/3/reference/expressions.html#generator.send.
+
+This approach resembles functional programming paradigms.  If we want multiple
+stateful "instances" of a word list, we do not instantiate a class, but rather
+simply create new generator objects from a generator function.  All
+statefulness is purely internal to the position of the generator within the
+`while True` loop.
+
+If we really wanted to, we could use a sentinel like `_RESET` to inject
+(`.send()`) in place of a filename; but that is not really necessary.  It is
+easier simply to create a new generator that is started with values from an
+existing generator using either `next(old_words)` or
+`old_words.send(newfile)`.  Or, for that matter, you can simply start a new
+generator with a list from any arbitrary code that might have created a word
+list by whatever means.
+

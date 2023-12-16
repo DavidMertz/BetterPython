@@ -1,0 +1,201 @@
+== Overriding Names In Builtins
+
+Python has a quite large standard library module called
++++<code>__builtins__</code>+++, and a relatively small collection of actual
+keywords.  Between Python versions, just a few things have slowly migrated from
+former to the latter, but for the most part Python programmers do not regularly
+think about the distinction that much.
+
+Whenever the Python interpreter starts (at least CPython, the reference and
+by-far most common implementation), everything in
++++<code>__builtins__</code>+++ is loaded automatically.  So on the surface,
+it's all just "a bunch of names."
+
+Let's take a look at what the actual keywords in Python 3.11 are:
+
+.Python 3.11 keywords
+[source,python]
+----
+>>> import keyword
+>>> keyword.kwlist
+['False', 'None', 'True', 'and', 'as', 'assert', 'async', 'await', 
+'break', 'class', 'continue', 'def', 'del', 'elif', 'else', 'except', 
+'finally', 'for', 'from', 'global', 'if', 'import', 'in', 'is', 
+'lambda', 'nonlocal', 'not', 'or', 'pass', 'raise', 'return', 'try', 
+'while', 'with', 'yield']
+>>> len(keyword.kwlist)
+35
+----
+
+In contrast, the built-in, but not technically reserved, names are a fair bit
+larger.  The dunders like +++<code>__name__</code>+++ and
++++<code>__package__</code>+++ are a bit special in being set differently
+depending on what code is being run. But the regular names are simply
+functionality you will always have available by default.  It's a long list,
+but useful to skim over (you might learn names you were not familar with, or
+be reminded of ones you have partially forgotten).
+
+.Python 3.11 built-ins, excluding dunders
+[source,python]
+----
+>>> [b for b in dir(__builtins__)
+...    if not b.startswith("_") and b not in keyword.kwlist]
+['ArithmeticError', 'AssertionError', 'AttributeError',
+'BaseException', 'BaseExceptionGroup', 'BlockingIOError',
+'BrokenPipeError', 'BufferError', 'BytesWarning', 'ChildProcessError',
+'ConnectionAbortedError', 'ConnectionError', 'ConnectionRefusedError',
+'ConnectionResetError', 'DeprecationWarning', 'EOFError', 'Ellipsis',
+'EncodingWarning', 'EnvironmentError', 'Exception', 'ExceptionGroup',
+'FileExistsError', 'FileNotFoundError', 'FloatingPointError',
+'FutureWarning', 'GeneratorExit', 'IOError', 'ImportError',
+'ImportWarning', 'IndentationError', 'IndexError', 'InterruptedError',
+'IsADirectoryError', 'KeyError', 'KeyboardInterrupt', 'LookupError',
+'MemoryError', 'ModuleNotFoundError', 'NameError',
+'NotADirectoryError', 'NotImplemented', 'NotImplementedError',
+'OSError', 'OverflowError', 'PendingDeprecationWarning',
+'PermissionError', 'ProcessLookupError', 'RecursionError',
+'ReferenceError', 'ResourceWarning', 'RuntimeError', 'RuntimeWarning',
+'StopAsyncIteration', 'StopIteration', 'SyntaxError', 'SyntaxWarning',
+'SystemError', 'SystemExit', 'TabError', 'TimeoutError', 'TypeError',
+'UnboundLocalError', 'UnicodeDecodeError', 'UnicodeEncodeError',
+'UnicodeError', 'UnicodeTranslateError', 'UnicodeWarning',
+'UserWarning', 'ValueError', 'Warning', 'ZeroDivisionError', 'abs',
+'aiter', 'all', 'anext', 'any', 'ascii', 'bin', 'bool', 'breakpoint',
+'bytearray', 'bytes', 'callable', 'chr', 'classmethod', 'compile',
+'complex', 'copyright', 'credits', 'delattr', 'dict', 'dir', 'divmod',
+'enumerate', 'eval', 'exec', 'exit', 'filter', 'float', 'format',
+'frozenset', 'getattr', 'globals', 'hasattr', 'hash', 'help', 'hex',
+'id', 'input', 'int', 'isinstance', 'issubclass', 'iter', 'len',
+'license', 'list', 'locals', 'map', 'max', 'memoryview', 'min',
+'next', 'object', 'oct', 'open', 'ord', 'pow', 'print', 'property',
+'quit', 'range', 'repr', 'reversed', 'round', 'set', 'setattr',
+'slice', 'sorted', 'staticmethod', 'str', 'sum', 'super', 'tuple',
+'type', 'vars', 'zip']
+>>> len([b for b in dir(__builtins__)
+...        if not b.startswith("_") and b not in keyword.kwlist])
+146
+----
+
+There are a few oddballs like `True` and `None` that are both keywords and also
+in +++<code>__builtins__</code>+++.  The difference between these different
+"always available" names is simply in whether they are assignable:
+
+.Assigning to keywords versus built-ins
+[source,python]
+----
+>>> FutureWarning = "FutureWarning"
+>>> lambda = "λ"
+  File "<stdin>", line 1
+    lambda = "λ"
+           ^
+SyntaxError: invalid syntax
+----
+
+Few Python developers can necessarily rattle off a complete list of either
+keywords or built-ins, but most of us have used almost all of these names from
+time to time.
+
+The override in the above example is unlikely to be something you would do
+inadvertantly, and it will only cause problems relatively uncommonly.  A
+`FutureWarning` is used by a library that intends to deprecate some API "in
+the future." However, unless you put that override inside the library itself
+(either as author, or by monkey patching), the library itself will retain the
+genuine version.
+
+However, there are a handful of names in +++<code>__builtins__</code>+++ that
+are relatively easy to overwrite simply by not giving the question a lot of
+thought.  For many of these, I have committed this "mistake" myself, sometimes
+in code that pre-dated the addition to the +++<code>__builtins__</code>+++
+module that later added the name.
+
+.Inadvertently overwriting built-in names
+[source,python]
+----
+# Using a natural seeming name within a function
+def total_receipts(receipts):
+    sum = 0
+    for receipt in receipts:
+        sum += receipt.amount
+    return sum
+
+# A database index column:
+sql = "SELECT id, firstname, lastname, age FROM persons"
+for row in cur.execute(sql):
+    id, first, last, age = row
+    if id = prior_person_id:
+        raise ValueError("Cannot re-process this record")
+    # ... other code
+----
+
+For uses like this, the "mistake" is probably not that important.  If the
+built-in function `sum()` is not used later on in the `total_receipts()` user
+function, the fact that we have (locally) overwritten a standard name stops
+mattering once we leave the function scope.
+
+[NOTE]
+.Python scoping rules
+====
+Python uses a rule called LEGB (Local, Enclosing, Global, and Built-in) for
+scoping variables.  That is, when the runtime sees a name, it looks in each of
+those scopes, in the order listed.  "Enclosing" means an outer function or a
+class in which a method is defined.  Local means within the body of the
+function or method where the code lives.
+
+The important thing about scopes is that when you leave them, the names they
+define are released, and do not affect the use of the same names in enclosing
+scope (nor in some other local scope you enter later.
+====
+
+In the case of overwriting `id`, the use feels natural, but is _slightly_ more
+error-prone.  A loop like the one I constructed _might_ occur within the body
+of a larger function or method, and that same function _might_ want to use the
+actual +++<code>__builtins__.id()</code>+++ function.  That said, the function
+_does_ remain available in the +++<code>__builtins__</code>+++ namespace (which
+could, in principle, itself be overwritten, which is *definitely* a bad idea to
+do).
+
+There are only a handful of names where a developer might naturally want to
+use that name as a custom variable.  However, a few of these _do_ genuinely
+feel natural to use. For example:
+
+.Harmful overwriting of built-in name
+[source,python]
+----
+>>> input = input("Your name? ")                   # (1)
+Your name? David Mertz
+>>> input
+'David Mertz'
+>>> input = input("Your name? ")                   # (2)
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+TypeError: 'str' object is not callable
+----
+
+(1) Built-in function `input()` at this point.
+
+(2) Now the name `input` has been bound to a string.
+
+I wish I could write honestly that this example is a purely hypothetical
+mistake which I have never myself committed in real code. I _can_ state
+honestly that I have never had the unreflective inclination to call a local
+variable `StopAsyncIteration` because that just seemed like an intuitive
+name for a custom value within my program.  There are fewer than 20 names for
+which the inclination to make this mistakes arises naturally.
+
+In general, the standard solution to this concern is to append a trailing
+underscore to a custom name in a program.  For example:
+
+[source,python]
+----
+>>> input_ = input("Your name? ")
+Your name? Bob Loblaw
+>>> input_
+'Bob Loblaw'
+>>> input_ = input("Your name? ")
+Your name? Kitty Sanchez
+>>> input_
+'Kitty Sanchez'
+----
+
+
+

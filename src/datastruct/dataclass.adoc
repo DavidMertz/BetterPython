@@ -1,0 +1,255 @@
+== Dataclasses And Namedtuples
+
+Python's standard library includes two very useful data structures for storing
+"records" of related data elements. The first is namedtuples, which under the
+hood are simply subclasses of tuples, but with named fields. The second is
+dataclasses, which are simply Python classes with many dunders and other
+useful behaviors generated automatically in a concise way.
+
+The things we can do with dataclasses and namedtuples can also be accomplished
+with the built-in types `dict` and `tuple`.  Indeed, every `namedtuple` is
+simply a subclass of `tuple`, so it is genuinely the same type.  However,
+using datatypes that allow readers to frame code very clearly as "records"
+improves readability and makes reasoning easier.
+
+Very often, it is useful to work with a collection of data where each item has
+a fixed collection of fields, but we work with many such items (comparing,
+sorting, aggregating, etc.).  Namedtuples and dataclasses have more parts than
+simple scalars—such as `float`, `int`, `str`, or `decimal.Decimal` or other
+special types—but are more similar to _datatypes_ than to _data structures_.
+The most obvious difference between the two types this section discusses is
+that dataclasses are mutable while namedtuples are immutable.
+
+Let's look at an example of record-oriented data.  We often encounter such
+data in relational database tables, in CSV or fixed-width files, in formats
+like Apache Parquet or Apache Arrow, in JSON serialized records, and
+elsewhere.  For extensive numeric analysis especially, a dataframe library
+such as Pandas or Polars is often useful. However, for this discussion we
+remain in pure-Python land.
+
+The standard library module `csv` is often very useful for reading
+line-oriented, delimited textual data files.  Despite the acronym standing for
+"comma separated values" the module is perfectly happy to work with any
+delimiter you might have in your data files.  The `csv` module is especially
+useful when character escaping is needed (the delimiter, and the escape and
+quoting characters themselves, have to be treated non-literally).  For the
+example in this discussion, we avoid that concern, by stipulation and by the
+actual format of the example file.  In the archive for the book
+(https://gnosis.cx/better) we have a file with some information on
+per-nation demographics:
+
+----
+[data]$ wc -l population-data.txt
+236 population-data.txt
+[data]$ head -5 population-data.txt
+Name|Population|Pct_Change_2023|Net_Change|Density_km3|Area_km2
+China|1,439,323,776|0.39|5,540,090|153|9,388,211
+India|1,380,004,385|0.99|13,586,631|464|2,973,190
+United States|331,002,651|0.59|1,937,734|36|9,147,420
+Indonesia|273,523,615|1.07|2,898,047|151|1,811,570
+----
+
+=== Using Namedtuples
+
+Each line represents some sort of object with the various attributes on it,
+and the collection of lines should live in a collection such as `list` or
+`set` to perform gropu operations.  Let's try one approach using
+`collections.namedtuple`:
+
+[source,python]
+----
+>>> from collections import namedtuple
+>>> from operator import attrgetter
+>>> from statistics import mean
+
+>>> with open("population-data.txt") as pop:
+...     fields = pop.readline().strip().split("|")
+...     Nation = namedtuple("Nation", fields)
+...     world_data = []
+...     for line in pop:
+...         line = line.replace(",", "")  # integers without sep
+...         data = line.split("|")
+...         typed_data = [data[0]] + [float(v) for v in data[1:]]
+...         world_data.append(Nation(*typed_data))
+...
+
+>>> max(world_data, key=lambda rec: rec.Density_km3) # (1)
+Nation(Name='Monaco', Population=39242.0, Pct_Change_2023=0.71,
+Net_Change=278.0, Density_km3=26337.0, Area_km2=1.0)
+
+>>> for nation in sorted(                            # (2)
+...         world_data, 
+...         key=attrgetter("Net_Change"),
+...         reverse=True)[:4]:
+...     print(nation)
+...
+Nation(Name='India', Population=1380004385.0, Pct_Change_2023=0.99,
+Net_Change=13586631.0, Density_km3=464.0, Area_km2=2973190.0)
+Nation(Name='China', Population=1439323776.0, Pct_Change_2023=0.39,
+Net_Change=5540090.0, Density_km3=153.0, Area_km2=9388211.0)
+Nation(Name='Nigeria', Population=206139589.0, Pct_Change_2023=2.58,
+Net_Change=5175990.0, Density_km3=226.0, Area_km2=910770.0)
+Nation(Name='Pakistan', Population=220892340.0, Pct_Change_2023=2.0,
+Net_Change=4327022.0, Density_km3=287.0, Area_km2=770880.0)
+
+>>> f"{mean(nation.Population for nation in world_data):,.0f}"
+'33,171,203'                                         # (3)
+----
+
+(1) Highest population density.
+
+(2) First four by population increase.
+
+(3) Average population of countries.
+
+Being a kind of tuple, we can equally reference the data inside namedtuples by
+index as well.  It's just that names are usually friendlier.  We can
+introspect the fields used and convert the structure to a dictionary as well.
+
+[source,python]
+----
+>>> world_data[37][5]
+306230.0
+>>> world_data[37].Area_km2
+306230.0
+>>> world_data[37]._fields
+('Name', 'Population', 'Pct_Change_2023', 'Net_Change', 
+'Density_km3', 'Area_km2')
+>>> world_data[37]._asdict()
+{'Name': 'Poland', 'Population': 37846611.0, 
+'Pct_Change_2023': -0.11, 'Net_Change': -41157.0, 
+'Density_km3': 124.0, 'Area_km2': 306230.0}
+----
+
+=== Static Versus Dynamic
+
+Readers will note that the prior example is probably a bit _too clever_ for
+most uses.  We dynamically created the attributes of the namedtuple, and yet
+we used those names in subsequent code under the assumption we knew which
+field names were dynamically determined.
+
+Of course, we do not _need to_ rely on dynamic creation of field names.  The
+constructor will accept a static sequence or even a static space-separated
+string of field names.  This is the more usual case, although the dynamic case
+certainly has some uses; for example, if you _know_ the files you read will
+have a few field names, but they might vary in other fields.  
+
+In order to emphasize the static declaration, some Pythonistas prefer a
+class-style spelling of `typing.NamedTuple`.  Note below that the annotations
+are merely documentation of intention, they *do not* perform any casting of
+types or checking that annotations match (unless third-party type checkers are
+used).  For example:
+
+[source,python]
+----
+
+from typing import NamedTuple
+>>> class Nation(NamedTuple):
+...     Name: str
+...     Population: int
+...     Pct_Change: float
+...     Net_Change: int
+...     Density: float
+...     Area: float
+...
+>>> poland = Nation(
+...     "Poland",
+...     37_846_611,
+...     -0.11,
+...     -41_157,
+...     Density=124.0,
+...     Area=306_230
+... )
+...
+>>> poland
+Nation(Name='Poland', Population=37846611, Pct_Change=-0.11,
+Net_Change=-41157, Density=124.0, Area=306230)
+----
+
+We can use either positional or named parameters to create a new `Nation`
+object, so the example uses a mixture (positional first, of course).  As
+promised, the type declarations are not enforced; for example, `poland.Area`
+is an integer (as in the actual source data) even though it conceptually could
+be non-integral as "declared."
+
+=== Data Classes
+
+Using data classes is very similar to using the `typing.NamedTuple` in syntax.
+However, data classes allow you to mutate fields, and also allow you to add
+methods that are useful for working with the data within fields.  Let's create
+a `dataclass` version of our `Nation` object.
+
+Mutability is the overriding difference between `typing.NamedTuple` and
+`@dataclasses.dataclass`, but `collections.namedtuple` has the advantage of
+feeling much lighter weight when used in code (for human readers, not in
+underlying resource utilization).  In speed and memory usage, the options are
+roughly equivalent, the main difference is in expressing an intent.  Likewise,
+in almost all of your plain classes, you _could_ decorate them as data classes
+and cause no harm to your program operation; but if a class really doesn't 
+have a record-oriented purpose, such a decorator would be confusing and 
+mislead later developers.
+ 
+
+[source,python]
+----
+>>> from dataclasses import dataclass
+>>> from copy import copy                          # (1)
+
+>>> @dataclass
+... class DataNation:
+...     Name: str
+...     Population: int = 0
+...     Pct_Change: float = 0
+...     Net_Change: int = 0
+...     Density: float = 0
+...     Area: float = 0
+...
+...     def project_next_year(self, new_people):
+...         self.Population += new_people
+...         self.Net_Change = new_people
+...         self.Pct_Change = new_people / self.Population
+...         self.Density = self.Population / self.Area
+...         return self
+...
+
+>>> peru_2023 = DataNation(
+...     "Peru",
+...     32_971_854,
+...     Pct_Change=1.42,
+...     Net_Change=461_401,
+...     Density=26,
+...     Area=1_280_000                             # (2)
+... )
+
+>>> peru_2023
+DataNation(Name='Peru', Population=32971854, Pct_Change=1.42, 
+Net_Change=461401, Density=26, Area=1280000)
+>>> peru_2023.Density, peru_2023.Population
+(26, 32971854)
+
+>>> peru_2024 = copy(peru_2023).project_next_year(500_000)
+>>> peru_2024.Density, peru_2024.Population
+(26.1498859375, 33471854)
+----
+
+(1) For the example, we wish to retain the old record.
+
+(2) The round number suggests the source data is imprecise.
+
+As with the documentary annotations in `typing.NamedTuple` the annotations in
+a dataclass are not enforced in any way by Python itself.  While conventional,
+the annotations are not even required to be types by Python.
+
+Data classes have a few more "advanced" features, such as
+`dataclasses.field()` which allows you to specify a mutable default that is
+specific to the instance.  `dataclasses.fields()`, `dataclasses.asdict()` and
+`dataclasses.astuple()` provide means to introspect and transform data
+classes.
+
+When you define a data class, you use a decorator rather than, e.g. inheriting
+from a base class.  This is used because the construction somewhat dynamically
+adds attributes and methods to the created class that would not be possible
+with inheritance.  You don't need to worry about this, just remember the
+syntax.  However, if you really need to know whether an object is a dataclass,
+you can ask `dataclasses.is_dataclass(obj)`.
+

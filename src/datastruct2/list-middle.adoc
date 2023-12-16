@@ -1,0 +1,293 @@
+== Deleting Or Adding Elements To The Middle Of A List
+
+An early discussion in this book, in the _A Grab Bag Of Python Gotchas_
+chapter, addresses how naive string concatenation within a loop might encounter
+quadratic complexity.  That is to say, that the overall time and computation
+needed to perform a sequence of N operations is O(N²).footnote:bigO[]
+
+Although in many situations, the solution to a slowdown in (certain) string
+operations is simply "use a list instead" (perhaps followed by a final
+`"".join(thelist)` to get back a string), lists have their own very similar
+danger. The problem here is in not understanding what is "cheap" and what is
+"expensive" for lists.  Specifically, inserting or removing items from a list
+anywhere other than at the end is _expensive_.
+
+We first explore some details of exactly how lists are implemented in Python,
+then after that looks at which other data structures would be good choices for
+which actual use cases.
+
+[NOTE]
+.Cost and amortized cost
+====
+For lists, accessing an item at a given numeric position is O(1).  Changing
+the value at a numeric position is O(1).  Perhaps surprisingly,
+`list.append()` and `list.pop()` are also *amortized* O(1).  
+
+That is, adding more items to a list will intermittently require reallocating
+memory to store their object references; but Python is clever enough to use
+pre-allocated reserve space for items that might be added.  Moreover, as the
+size of a list grows, the pre-allocation padding also grows.  The overall
+effect is that reallocations become rarer, and their relative cost averages
+out to 0% asymptotically.  In CPython 3.11, we see the following behavior on
+an x86_64 architecture (but these details are not promised for a different
+Python implementation, version, or chip architecture):
+
+[source,python]
+----
+>>> from sys import getsizeof
+>>> def pre_allocate():
+...     lst = []
+...     size = getsizeof(lst)
+...     print(" Len   Size  Alloc")
+...     for i in range(1, 10_001):
+...         lst.append('a')
+...         newsize = getsizeof(lst)
+...         if newsize > size:
+...             print(f"{i:>4d}{newsize:>7d}{newsize-size:>6d}")
+...             size = newsize
+...
+>>> pre_allocate()                                 # (1)
+ Len   Size  Alloc  |   Len   Size  Alloc
+   1     88    32   |   673   6136   704
+   5    120    32   |   761   6936   800
+   9    184    64   |   861   7832   896
+  17    248    64   |   973   8856  1024
+  25    312    64   |  1101  10008  1152
+  33    376    64   |  1245  11288  1280
+  41    472    96   |  1405  12728  1440
+  53    568    96   |  1585  14360  1632
+  65    664    96   |  1789  16184  1824
+  77    792   128   |  2017  18232  2048
+  93    920   128   |  2273  20536  2304
+ 109   1080   160   |  2561  23128  2592
+ 129   1240   160   |  2885  26040  2912
+ 149   1432   192   |  3249  29336  3296
+ 173   1656   224   |  3661  33048  3712
+ 201   1912   256   |  4125  37208  4160
+ 233   2200   288   |  4645  41880  4672
+ 269   2520   320   |  5229  47160  5280
+ 309   2872   352   |  5889  53080  5920
+ 353   3256   384   |  6629  59736  6656
+ 401   3704   448   |  7461  67224  7488
+ 457   4216   512   |  8397  75672  8448
+ 521   4792   576   |  9453  85176  9504
+ 593   5432   640
+----
+
+(1) Printed output modified to show two columns of len/size/alloc.
+
+This general pattern of pre-allocating a larger amount each time the list
+grows, roughly in proportion to the length of the existing list, continues for
+lists of millions of items.
+====
+
+Python gives you the ability to insert or remove items from anywhere within a
+list, and for some purposes it will seem like the obvious approach.  Indeed,
+for a few operations on a relatively small list, the minor inefficiency is
+wholly unimportant.
+
+.Inserting and removing words from middle of list
+[source,python]
+----
+>>> words = [get_word() for _ in range(10)]
+>>> words
+['hennier', 'oughtness', 'testcrossed', 'railbus', 'ciclatoun',
+'consimilitudes', 'trifacial', 'mauri', 'snowploughing', 'ebonics']
+>>> del words[3]                                   # (1)
+>>> del words[7]
+>>> del words[3]                                   # (1)
+>>> words
+['hennier', 'oughtness', 'testcrossed', 'consimilitudes', 'trifacial',
+'mauri', 'ebonics']
+>>> words.insert(3, get_word())
+>>> words.insert(1, get_word())
+>>> words                                          # (2)
+['hennier', 'awless', 'oughtness', 'testcrossed', 'wringings',
+'consimilitudes', 'trifacial', 'mauri', 'ebonics']
+----
+
+(1) The word deleted at initial index 3 was "railbus", but on next deletion
+"circlatoun" was at that index.
+
+(2) The word "wringings" was inserted at index 3, but got moved to index 4
+when "awless" was inserted at index 1.
+
+[NOTE]
+====
+The specific implementation of the `get_word()` function used here is not
+important.  However, as with other examples ancillary to the main point of a
+section, or requiring larger datasets, the source code and data file can be
+found at https://gnosis.cx/better.  All that matters for the current section
+is that `get_word()` returns some string each time it is called.
+====
+
+'''
+
+For the handful of items inserted and removed from the small list in the
+example, the relative inefficiency is not important.  However, even in the
+small example, keeping track of _where_ each item winds up by index becomes
+confusing. 
+
+As the number of operations gets large, this approach becomes notably painful.
+The below toy function performs fairly meaningless insertions and deletions,
+always returning five words at the end.  But the general pattern it uses is
+one you might be tempted towards in real-world code.
+
+.Asymptotic timing for insert-and-delete from list middle
+[source,python]
+----
+>>> from random import randrange
+>>> def insert_then_del(n):
+...     words = [get_word() for _ in range(5)]
+...     for _ in range(n):
+...         words.insert(randrange(0, len(words)), get_word())
+...     for _ in range(n):
+...         del words[randrange(0, len(words))]
+...     return words
+...
+>>> insert_then_del(100)
+['healingly', 'cognitions', 'borsic', 'rathole', 'division']
+>>> insert_then_del(10_000)
+['ferny', 'pleurapophyses', 'protoavis', 'unhived', 'misinform']
+>>> %timeit insert_then_del(100)
+109 µs ± 2.42 µs per loop (mean ± std. dev. of 7 runs, 10,000 loops each)
+>>> %timeit insert_then_del(10_000)
+20.3 ms ± 847 µs per loop (mean ± std. dev. of 7 runs, 10 loops each)
+>>> %timeit insert_then_del(1_000_000)
+1min 52s ± 1.51 s per loop (mean ± std. dev. of 7 runs, 1 loop each)
+----
+
+Going from 200 operations (counting each of insertion and deletion) to 20,000
+operations takes on the order of 200x as long. At these sizes the lists
+themselves are small enough to matter little; the time involved is dominated
+by the number of calls to `get_word()`, or perhaps a bit to `randrange()`,
+although we still see a 2x proportional slowdown from the list operations.
+
+However, increasing the number of operations by another 100x, to 2 million,
+linear scaling would see an increase from 20 ms to about 2 seconds.  Instead
+it jumps to nearly 2 minutes, or about 55x slowdown from linear scaling.  I
+watched my memory usage during the 15 minutes that `%timeit` took to run the
+timing 7 times, and it remained steady.  
+
+It's not that these operations actually use very much memory; rather, every
+time we insert one word near the middle of a 1 million word list, that
+requires the interpreter to move 500 thousand pointers up one position in the
+list.  Likewise, each deletion near the middle of a 1 million word list
+requires us to move the top 500 thousand pointers back down.  This gets much
+worse very quickly as the number of operations increases further.
+
+=== More Efficient Data Structures
+
+There is no one solution to the problem described here.  On the other hand,
+there is exceedingly rarely an actual use case for the exact behavior
+implemented by code such as the above example.  Trust me, code like that is
+not purely contrived for this book—I have encountered a great much like it in
+production systems (merely with the problem buried beneath a lot of other
+functionality in such code).
+
+If you merely need to be able to insert and delete from _either_ the end _or_
+the beginning of a concrete sequence, `collections.deque` gives you exactly
+what you need.  This is not an arbitrary middle for insertion and deletion,
+but very often all you actually want is `.appendleft()` and `.popleft()` to
+accompany `.append()` and `pop()`.
+
+In some cases, `sortedcontainers`
+(https://grantjenks.com/docs/sortedcontainers/) or `pyrsistent`
+(https://pyrsistent.readthedocs.io/en/latest/) may have closer to the
+performance characteristics you need, while still offering a _sequence_
+datatype.  Generally using these third-party containers is still only going to
+get you to O(N×log N) rather than O(N), but that remains strikingly better
+than O(N²).
+
+As well, the previous chapter shows an example where "rolling your own" data
+structure actually _can_ make sense.  My pure-Python implementation of
+`CountingTree`, presented earlier, is able to do exactly the "insert into the
+middle" action that is described in this section, and remains relatively
+efficient.  For this narrow and specific use case, my custom data structure is
+actually pretty good.
+
+However, instead of reaching for the abovementioned collections—as excellent
+as each of them genuinely is—this problem is probably one in which you (or the
+developer before you) misunderstood what the underlying problem _actually_
+requires.
+
+For example, a somewhat plausible reason you might _actually_ want to keep an
+order for items is because they represent some sort of _priority_ of actions
+to be performed or data to be processed.  A wonderful data structure in which
+to maintain such priorities is simply a Python `dict`.  A plausible way of
+using this fast data structure is to keep your "words" (per the above example)
+as keys, and their priority as values.
+
+A priority is not exactly the same thing as an index position, but it _is_
+something which very quickly allows you to maintain a sequence for the data
+you wish to handle, while keeping insertion or deletion operations always at
+O(1).  This means, of course, that performing N such operations is O(N), which
+is the best we might plausibly hope for.  Constructing a sequence _at the end_
+of such operations is both cheap and easy.  For example:
+
+.A collection of items with a million possible priorities
+[source,python]
+----
+>>> from pprint import pprint
+>>> from functools import partial
+>>> priority = partial(randrange, 1, 1_000_000)
+>>> words = {get_word():priority() for _ in range(100_000)}
+>>> words_by_priority = sorted(words.items(), key=lambda p: p[1])
+>>> pprint(words_by_priority[:10])
+[('badland', 8),
+ ('weakliest', 21),
+ ('sowarry', 28),
+ ('actinobiology', 45),
+ ('oneself', 62),
+ ('subpanel', 68),
+ ('alarmedly', 74),
+ ('marbled', 98),
+ ('dials', 120),
+ ('dearing', 121)]
+>>> pprint(words_by_priority[-5:])
+[('overslow', 999976),
+ ('ironings', 999980),
+ ('tussocked', 999983),
+ ('beaters', 999984),
+ ('tameins', 999992)]
+----
+
+It's possible—even likely—that the same priority occurs for multiple words,
+occasionally.  It's also very uncommon that you _actually_ care about
+_exactly_ which order two individual items come in out of 100,000 of them.
+However, even with duplicated priorities, items are not dropped, they are
+merely ordered arbitrarily (but you could easily enough impose an order if you
+have a reason to).
+
+Deleting items from the `words` data structure is just slightly more difficult
+than was `del words[n]` where it had been a list.  To be safe, you'd want to
+do something like:
+
+[source,python]
+----
+>>> for word in ['producibility', 'scrambs', 'marbled']:
+...     if word in words:
+...         print("Removing:", word, words[word])
+...         del words[word]
+...     else:
+...         print("Not present:", word)
+...
+Not present: producibility
+Removing: scrambs 599046
+Removing: marbled 98
+----
+
+The extra `print()` calls and the `else` clause are just for illustration;
+presumably if this approach is relevant to your requirements, you would omit
+them, e.g.:
+
+[source,python]
+----
+>>> for word in ['producibility', 'scrambs', 'marbled']:
+...     if word in words:
+...         del words[word]
+----
+
+This approach remains fast and scalable, and is quite likely much closer to
+the actual requirements of your software than was misuse of a list.
+

@@ -1,0 +1,117 @@
+== `collections.defaultdict`
+
+In the very ancient history of Python (before 2.7), `collections.defaultdict`
+was available but `collections.Counter` was not; the use case that `Counter`
+has addressed since 2010 was met with a recommendation of "use `defaultdict`".
+
+Both of these collections are subclasses of `dict` that add specialized
+capabilities.  A default dictionary is only narrowly specialized, and in that
+sense is more general than `collections.Counter`, `collections.OrderedDict`,
+or `collections.UserDict`.  The latter two of these are worth reading about in
+the Python documentation (https://docs.python.org/3/library/collections.html),
+but this book does not specifically address them.
+
+The "mistake" fixed by using `defaultdict` is simply that of using a repetitive
+and overly verbose pattern that can be simplified.  I often make this mistake
+of inelegance, and hence feel the reminder is worthwhile.
+
+When you work with plain dictionaries you often want to modify a mutable value
+associated with a key.  But before you can peform that modification, you need
+to check whether the dictionary _has_ the needed key in the first place.  For
+example, let's work with the SOWPODS wordlist used in various examples, and
+create a dictionary that maps first letters to a collection of words starting
+with that letter.
+
+[source,python]
+----
+>>> from random import choice, seed
+>>> from pathlib import Path
+>>> words = Path("data/sowpods").read_text().split()
+>>> seed("first-letter")                           # (1)
+>>> for _ in range(100):
+...     word = choice(words)
+...     first_letter = word[0]
+...     if first_letter not in by_letter:
+...         by_letter[first_letter] = set([word])
+...     else:
+...         by_letter[first_letter].add(word)
+...
+>>> by_letter.get("g", set())
+set()
+>>> by_letter.get("r", set())
+{'repositors', 'rotating', 'resectional', 'reflectometry'}
+----
+
+(1) A seed is used simply so readers can replicate specific choices.
+
+A similar pattern is also often used with `list` and `.append()`, and
+sometimes with other collections and their corresponding method for including
+more items. 
+
+This pattern is perfectly workable, but is made better with `defaultdict`:
+
+[source,python]
+----
+>>> first_letter = defaultdict(set)
+>>> seed("first-letter")
+>>> by_letter = defaultdict(set)
+>>> for _ in range(100):
+...     word = choice(words)
+...     by_letter[word[0]].add(word)
+...
+>>> by_letter['g']
+set()
+>>> by_letter['r']
+{'repositors', 'rotating', 'resectional', 'reflectometry'}
+----
+
+Not only collections can be used, but any callable.  For example, recall the
+fanciful numerological function `word_number()` defined in the chapter
+_Looping over the Wrong Things_, in the section "Generating a list for
+iteration."  But here let's pretend that this function is actually
+computationally expensive and we'd like to avoid running it more often than
+needed (`@functools.lru_cache` and `@functools.cache` decorators also provide
+a useful way of achieving this task).
+
+[source,python]
+----
+>>> def word_number(word):
+...     magic = 0
+...     for letter in word:
+...         magic += 1 + ord(letter) - ord("a")
+...     return magic
+...
+>>> word_magic = defaultdict(lambda: "<unknown>")
+>>> word_magic["chillier"] = word_number("chillier")
+>>> word_magic["snicker"] = word_number("snicker")
+>>> word_magic["bonesetter"] = word_number("bonesetter")
+>>> word_magic["overboiled"]
+'<unknown>'
+>>> word_magic["chillier"]
+76
+>>> word_magic
+defaultdict(<function <lambda> at 0x7fab522b9bc0>, {'chillier': 76, 
+'snicker': 79, 'bonesetter': 123, 'overboiled': '<unknown>'})
+----
+
+In this particular example, however, we might want to go ahead and perform the
+calculation once to actually save the expensive calculation into the
+dictionary (this next works with regular `dict` as well):
+
+[source,python]
+----
+>>> word_magic.setdefault("sternitic", word_number("sternitic"))
+117
+>>> word_magic
+defaultdict(<function <lambda> at 0x7fab522b9bc0>, {'chillier': 76, 
+'snicker': 79, 'bonesetter': 123, 'overboiled': '<unknown>', 
+'sternitic': 117})
+>>> word_magic.setdefault("overboiled", word_number("sternitic"))
+'<unknown>'
+----
+
+Related to `defaultdict`, the standard, but largely overlooked,
+`dict.setdefault()` also provides a mechanism to retrieve a key if it exists,
+but set (and retrieve) it if it hadn't already.  To circle back to the first
+paragraph of this discussion, a `Counter` resembles a `defaultdict` with the
+factory set to `int`, but adding additional methods.

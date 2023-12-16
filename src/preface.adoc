@@ -1,0 +1,276 @@
+= Preface
+
+Python is a very well designed programming language.  In surprisingly many
+cases, the language manages to meet one of the aphorisms in Tim Peters' _The
+Zen of Python_: "There should be one—and preferably only one—obvious way
+to do it."  If there is only one way to do it, it's hard to make mistakes.
+
+Of course, that aphorism is an aspiration that is not uniformly met.  Often
+there are many ways to perform a task in Python, many of them simply wrong,
+many inelegant, many leaning heavily on idioms of other programming languages
+rather than being _Pythonic_, and some of them not exactly _wrong_ but still
+grossly inefficient.  All the problems described in this book are ones that
+I've seen in real-life code, sometimes in the wild, sometimes caught during
+code review, and admittedly far too often in code I wrote myself before
+reflecting upon its flaws.
+
+== About The Book
+
+The sections of this book each present some mistake, pitfall, or foible that
+developers can easily fall into, and are accompanied by descriptions of ways to
+avoid making them.  At times those solutions simply involve a minor change in
+"spelling," but in most cases they require a nuance of thought and design in
+your code.  Many of the discussions do something else as well...
+
+I do not hope only to show you something you did not know, but in a great many
+cases I hope to show you something about which you did not know there _was
+something_ to know.  I believe that the most effective writing and teaching
+conveys to readers or students not only information, but also good _ways of
+thinking_ about problems and reasoning about their particular solutions.  The
+infoboxes, and footnotes, and silly digressions, within this book all hope to
+allow you to think more deeply about a particular domain, or a particular task,
+or a particular style of programming.
+
+There is no need to read this book from cover to cover (but I believe that
+readers who do so will benefit). Each chapter addresses a related cluster of 
+concepts, but standalone. Moreover, each section within a chapter is also 
+self-contained. Each can be read independently of the others, and most readers
+will learn something interesting in each one. Some of the sections are more 
+advanced than others, but even in those that seem introductory, I think you 
+will find nuances you did not know. And even in those that seem advanced, I 
+hope you will find the discussions accessible and enlightening.
+
+Notwithstanding that each section forms a sort of vignette, the chapters are
+generally organized in sequence of increasing sophistication, and the sections
+loosely build upon each other.  Where it feels helpful, many discussions refer
+to other sections that might provide background, or forshadow elaboration in
+later sections.
+
+In general, I am aiming at a reader who is an intermediate level Python
+developer, or perhaps an advanced beginning.  I assume you know the basics of
+the Python programming language; these discussions do not teach the most basic
+syntax and semantics that you would find in a first course or first book on
+Python.  Mostly I simply assume you have an inquisitive mind and a wish to
+write code that is beautiful, efficient, and correct.
+
+This book is written with Python 3.12 in mind, which as of this writing is
+expected to be released on October 2, 2023.  Code shown has been tested
+against 3.12 betas.  The large majority of the code examples will work in
+Python 3.8, which is the earliest version that has not passed end-of-life as
+of mid-2023.  In some cases, I note that code requires at least Python 3.10,
+which was released on October 4, 2021; or occasionally at least Python 3.11, 
+released on October 24, 2022.  The large majority of the mistakes discussed 
+within this book were mistakes already in Python 3.8, although a few reflect 
+improvements in later version of Python.
+
+Documents entitled "_What's new in Python M.m.μ_"footnote:[Python does not
+strictly use Semantic Versioning (https://semver.org), so my implied
+nomenclature "major.minor.micro" is not strictly accurate.] have been
+maintained since at least the Python 1.4 days (in 1996).footnote:[See
+https://docs.python.org/3/whatsnew/index.html for an index of past release
+notes.]
+
+=== Code Samples
+
+Most of the code samples shown in this book use the Python REPL
+(Read-Evaluate-Print-Loop).  Or more specifically, they use the IPython
+(https://ipython.readthedocs.io) enhanced REPL, but using the `%doctest_mode`
+magic to make the prompt and output closely resemble the plain `python` REPL.
+One IPython "magic" that is used fairly commonly in examples is `%timeit`;
+this wraps the standard library `timeit` module, but provides an easy-to-use
+and adaptive way of timing an operation reliably.  There are some _mistakes_
+discussed in this book where a result is not _per se_ wrong, but it takes
+orders-of-magnitude longer to calculate than it should; this magic is used to
+illustrate that.
+
+When you write your own code, of course, interaction within a REPL—including
+within Jupyter notebooks (https://jupyter.org) or other richly interactive
+environments—will only be a small part of what you write.  But the mistakes in
+this book try to focus on as narrow samples of code as possible.  An
+interactive shell is often a good way to illustrate these mistakes; I encourage
+you to borrow the lessons you learn, and copy them into full `*.py` files.
+Ideally these discussions can be adapted into rich code bases after starting as
+mere snippets.
+
+At times when presenting commands run in the operating system shell (i.e.
+running a Python script to show results), I display the command prompt
+`[BetterPython]$` to provide a quick visual clue.  This is not actually the
+prompt on my personal machine, but it's something I _could_ change the prompt
+to if I wanted to.  On Unix-like systems, the `$` is often (but not always)
+part of shell prompts.
+
+Different programming environments will treat copy/pasting code samples into
+them differently.  Within IPython itself, using the `%paste` magic will ignore
+the leading `>>>` or `...` characters in an appropriate way.  Various other
+shells, IDEs, and code editors, will behave variously.  Many of the code
+samples that are presented outside a REPL, and also many of the data files
+used, are available at https://gnosis.cx/better.  Moreover, paths are mostly
+simplified for presentation; files often live within the `code/` or `data/`
+subdirectories of the book's website, but those paths are usually not shown.
+In other words, the code presented is used to explain concepts, not as
+reusable code I intend for you to copy directly (you _may_ use it, of course).
+In particular, much of the code shown is code that has *foibles* in it; for
+that code I most certainly do not want you to use it in production.
+
+[NOTE]
+.A short introduction to a REPL
+====
+Many developers who have come from other programming languages, or who are
+just beginning programming in general, may not appreciate how amazingly
+versatile and useful an interactive shell can be.  More often than not, when I
+wish to figure out how I might go about some programming task, I jump into a
+Python, IPython, or Jupyter environment to get a more solid understanding how
+my imagined approach to a problem will work out.
+
+A quick example of such a session, for me within a `bash` terminal, might look
+like:
+
+[source,shell]
+----
+[BetterPython]$ ipython
+Python 3.11.0 | packaged by conda-forge | 
+    (main, Oct 25 2022, 06:24:40) [GCC 10.4.0]
+Type 'copyright', 'credits' or 'license' for more information
+IPython 8.7.0 -- An enhanced Interactive Python. Type '?' for help.
+
+In [1]: %doctest_mode                              # (1)
+Exception reporting mode: Plain
+Doctest mode is: ON
+>>> from collections import ChainMap               # (2)
+>>> ChainMap?                                      # (3)
+Init signature: ChainMap(*maps)
+Docstring:
+A ChainMap groups multiple dicts (or other mappings) together
+to create a single, updateable view.
+[...]
+File:           ~/miniconda3/lib/python3.11/collections/__init__.py
+Type:           ABCMeta
+>>> dict1 = dict(foo=1, bar=2, baz=3)
+>>> dict2 = {"bar": 7, "blam": 55}
+>>> chain = ChainMap(dict1, dict2)
+>>> chain["blam"], chain["bar"]                    # (4)
+(55, 2)
+>>> !ls src/d*.adoc                                # (5)
+src/datastruct2.adoc  src/datastruct.adoc
+----
+
+(1) Use a display style similar to running just `python` with no script.
+
+(2) I pressed <tab> to select completed line after `collections`.
+
+(3) I'd like information about what this object does (abridged here).
+
+(4) Entering expressions shows their value immediately.
+
+(5) With `!`, I can run a command within external shell and see results.
+
+There's much more to what REPLs can do than is shown, but this gives you a
+quick feel for capabilities.
+====
+
+All code blocks whose title includes “Source code of <filename>” are available
+for download from https://gnosis.cx/better. In some cases, the code shown in
+this book is an excerpt from a longer file named. All other code blocks,
+whether titled to aid navigation or untitled, are present only to explain
+concepts; of course, you are free to use them by copying, re-typing, or
+adapting for your purpose.
+
+== Obtaining The Tools Used In This Book
+
+The Python programming language is Free Software that may be obtained at the
+official site of the Python Software Foundation (PSF).footnote:[Python and the
+Python Logo are trademarks of the Python Software Foundation.] A variety of
+other entities have also created customized Python distributions with
+additional or different capabilities bundled with the same core programming
+language.  These include many operating system vendors. Most Linux
+distributions bundle Python.footnote:[Linux® is the registered trademark of
+Linus Torvalds in the U.S. and other countries.] macOS (formerly stylized in
+slightly different ways, such as "Mac OS X" and "OS X") has included Python
+since 2001.footnote:[macOS® is a trademark of Apple Inc.] It is available for
+Windows from the Microsoft Store.footnote:[Microsoft Windows is a trademark of
+the Microsoft group of companies.]
+
+To obtain the PSF distribution of Python, go to
+https://www.python.org/downloads/.  Versions are available for many operating
+systems and hardware platforms.  To follow some of the examples within this
+book, using the IPython terminal-based REPL (https://ipython.org/install.html)
+or Jupyter notebooks (https://docs.jupyter.org/en/latest/install.html) is
+advisable.  These enhanced interactive environments support "magics" such as
+`%timeit` which are special commands not contained in the Python language
+itself, but which can improve interactive exploration.  Throughout the book,
+when interactive sessions are shown, they can be easily identified by a
+leading `>>>` for initial lines and leading `...` for continuation lines (when
+present).  However, Jupyter—as well as the interactive shells in many
+integrated development environments (IDEs) or sophisticated code editors—mark
+code entered and results produced by other visual indicators.  The enhanced
+REPLs mentioned also support adding a single or double `?` at the end of a
+Python name to display information about the object it refers to; this is used
+in some examples.
+
+I personally use Miniconda (https://docs.conda.io/en/latest/miniconda.html) as
+a means of installing Python, IPython, Jupyter, and many other tools and
+libraries.  Miniconda itself contains a version of Python, but will also allow
+creation of _environments_ with different versions of Python, or indeed
+without Python at all but rather other useful tools.  You will see hints in
+some examples about my choice of installation, but nothing in the book depends
+on you following my choice.
+
+== Other Useful Tools
+
+Most of the discussions in this book are conceptual rather than merely
+stylistic.  However, linters will often detect mistakes that at least border
+on conceptual, including sometimes mistakes described in this book.  A
+particularly good linter for Python is flake8 (https://flake8.pycqa.org/)
+which actually utilizes several lower-level linters as (optional)
+dependencies.  A good linter may very well not detect important mistakes,
+but you cannot go wrong in at least _understanding_ why a linter is
+complaining about your code.
+
+The homepage for the Black code formatter
+(https://black.readthedocs.io/) describes itself well: 
+
+[quote,Black homepage]
+Black is the uncompromising Python code formatter. By using it, you agree to
+cede control over minutiae of hand-formatting. In return, Black gives you
+speed, determinism, and freedom from pycodestyle nagging about formatting. You
+will save time and mental energy for more important matters.
+
+Opinions vary about using Black vary among Pythonistas.  I have found that
+even if Black occasionally formats code in a manner I wouldn't entirely
+choose, enforcing consistency when working with other developers aids the
+readability of shared code, especially on large projects.
+
+A very impressive recent project for linting and code-formatting is Ruff
+(https://beta.ruff.rs/docs/).  Ruff covers most of the same linting rules as
+flake8 and other tools, but is written in Rust and runs several orders of
+magnitude faster than other linters.  As well, Ruff provides auto-formatting
+similar to Black, but cleans up many things that Black does not address
+(however, Black also cleans things that Ruff does not; they are
+complementary).
+
+In modern Python development, type annotations and type checking tools are in
+relatively widespread use.  The most popular of these tools are probably Mypy
+(http://mypy-lang.org/), Pytype (https://google.github.io/pytype/), Pyright
+(https://github.com/Microsoft/pyright), and Pyre (https://pyre-check.org/).
+All of these tools have virtues, especially for large-scale projects, but this
+book generally avoids discussion of the Python type-checking ecosystem.  The
+kinds of mistakes that type checking can detect is mostly disjoint from the
+semantic and stylistic issues that we discuss herein.
+
+== Acknowledgments
+
+A number of participants in the Python-Help Discourse board
+(https://discuss.python.org/c/users/7) have suggested nice ideas for these
+mistakes.  For many of their suggestions, I had already included their idea,
+or some variation of it, but in other cases, their thoughts prompted addition
+or modification of the mistakes I address.  I greatly thank Chris Angelico,
+Charles Machalow, John Melendowski, Steven D'Aprano, Ryan Duve, Alexander
+Bessman, Cooper Lees, Peter Bartlett, Glenn A. Richard, Ruben Vorderman, Matt
+Welke, Steven Rumbalski, and Marco Sulla for their suggestions.  
+
+Other friends who have made suggestions include Brad Huntting, Adam Peacock,
+and Mary Ann Sushinsky.
+
+This book is far better thanks to the suggestions I received; all errors
+remain my own.
+

@@ -1,0 +1,207 @@
+== Monkeypatching
+
+A powerful, and therefore easily misused, capability in highly dynamic
+languages like Python is that they allow _monkeypatching_.  Even existing
+modules and classes can be modified at runtime to exhibit different behaviors
+that might be better specialized for the needs of a specific project.  Doing so
+is called "monkeypatching."
+
+The programming language Ruby is, in many ways, quite similar to Python.  It
+is even more dynamic, so a few things that are difficult-to-impossible to
+monkeypatch in Python are easy in Ruby (mainly the possiblity of dynamically
+altering even built-in types, which Python does not allow).  Partially as a
+consequence of such broad power, monkeypatching became much more deeply
+incorporated into Ruby's culture than it has in Python.  In turn, this
+cultural trend also largely became seen as an anti-pattern among Ruby
+developers; however, a great deal of code (such as Ruby's biggest mover, the
+Rails web framework) included monkeypatching that could not be removed without
+breaking backwards compatibility.
+
+An influential article in that ecosystem was Avdi Grimm's 2008 "Monkey
+Patching is Destroying Ruby"
+(https://avdi.codes/why-monkeypatching-is-destroying-ruby/).  You can tell
+from the date that this discussion is not new. In fact, Grimm acknowledges
+Python as the source of the term, and a predecessor language in allowing it.
+
+
+Already in 2008, monkeypatching was well-known in Python, but not especially
+widely used.  In 2023, as I write this, that characterization remains true.
+You might certainly encounter Python code that uses monkeypatching, but only
+moderately often.  Deciding to use monkeypatching in your own code is
+_usually_ a mistake, but not _always_.  Classes, instances, source code
+itself, and a few other objects, can be monkeypatched in Python.  For this
+example though, I will present the most common use of the technique:
+monkeypatching modules.
+
+For a slightly contrived example that nonetheless genuinely exemplifies the
+situations that tend to motivate Python developers to monkeypatch, suppose you
+have an application that processes CSV data that comes from a vendor.  A
+sample data file might look like:
+
+.Data in file `accounts.csv`
+[source,csv]
+----
+Balance,AccountNum,Owner
+2913.94,3850234082,Omar
+9102.53,0028382910,Sarita
+5181.32,8213593023,David
+...more rows...
+----
+
+Your application might look something like a more sophisticated version of
+this:
+
+[source,python]
+----
+import re
+import sys
+
+def get_5k_balances(rows):
+    for row in rows:
+        if re.match(r"5\d{3}\.\d{2}", row):
+            balance, account_num, owner = row.split(",")
+            yield (f"Account: {account_num}\n"
+                   f"  Owner: {owner.strip()}\n"
+                   f"Balance: ${float(balance):,.2f}\n")
+
+# ... many more functions ...
+
+if __name__ == "__main__":
+    for account in get_5k_balances(open(sys.argv[1])):
+        print(account)
+----
+
+By stipulation, there are actually many places in this code where we perform a
+`re.match()` against balance numbers.  When we run this script, it will loop
+through the specified file and yield formatted versions of some of the rows
+(i.e.  Sarita's and Omar's accounts do not have balances in the range of
+interest):
+
+----
+[BetterPython]$ python process-accounts.py accounts.csv
+Account: 8213593023
+  Owner: David
+Balance: $5,181.32
+----
+
+After a while, our vendor introduces overdraft balances, and hence decides to
+change the format so that balances are always shown with a leading plus or
+minus, e.g.:
+
+.Data in file `accounts-new.csv`
+[source,csv]
+----
+Balance,AccountNum,Owner
++2913.94,3850234082,Omar
++9102.53,0028382910,Sarita
++5181.32,8213593023,David
+-1002.26,4890094375,Juana
+...more rows...
+----
+
+The program as written will not match any lines.  So one might come up with a
+_clever_ idea to let all the `re.match()` calls look for the extra leading
+plus rather than change them throughout the code.  It's easy to do:
+
+.Source code of `monkey_plus.py`
+[source,python]
+----
+import re
+from re import match as _match
+
+def match_positive(pat, s, flags=0):
+    return _match(rf"\+{pat}", s, flags)
+
+re.match = match_positive
+----
+
+If we add the single line `import monkey_plus` to the top of our script,
+creating `process-accounts2.py` it now processes the new format (in *all* the
+hypothetical functions within the script that utilize `re.match()` not only in
+`get_5k_balances()`).
+
+----
+[BetterPython]$ python process-accounts2.py accounts-new.csv
+Account: 8213593023
+  Owner: David
+Balance: $5,181.32
+----
+
+A clever programmer is tempted to notice that they control all of the code
+within `process-accounts2.py` and are confident that the only place where
+`re.match()` is used is in matching balances (or in any case, matching numbers
+preceded by a plus or a minus sign).
+
+'''
+
+So far, nothing broke.  But the clever programmer of this narration decides
+that they would like to add a switch to control which of the many functions
+available are used to process the data files that match the new vendor format.
+A reasonable program might be:
+
+.Source code of `process-accounts3.py`
+[source,python]
+----
+import re
+import monkey_plus
+import argparse
+
+def get_5k_balances(rows):
+	# ... same as previously shown ...
+
+# ... many more functions ...
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("datafile", type=str, help="CSV data file")
+    parser.add_argument(
+        "-f", "--function", action="store", default="get_5k_balances")
+    args = parser.parse_args()
+
+    func = eval(args.function)
+    for account in func(open(args.datafile)):
+        print(account)
+----
+
+Unfortunately, running this program gets us:
+
+----
+[BetterPython]$ python process-accounts3.py accounts-new.csv
+usage: process-accounts3.py [-h] [-f FUNCTION] datafile
+process-accounts3.py: error: the following arguments 
+	are required: datafile
+----
+
+It's easy at this point to start down a wild goose chase of trying to figure
+out how the arguments for `argparse` might be wrong. Or wonder whether the
+admittedly too clever `eval()` to get the function object from its name is
+amiss.
+
+None of those issues are the mistake here though.  What has happened is that
+somewhere buried inside the "protected" (i.e. leading single underscore, and
+not exported) functions used to implement `argparse` there are uses of
+`re.match()`.  One might even miss this looking at the source code since that
+module had used `import re as _re`, and therefore the calls are actually to
+`_re.match()`.  Even so, the monkeypatching has badly broken a completely
+unrelated module—in this case, one in the standard library—in a way that is
+far from obvious, in code we did not necessarily even suspect would use our
+altered function.  It's the same module *object* that is mutated by
+monkeypatching, it doesn't matter what name it happens to be bound to in
+different indirect imports.
+
+The example provided in this discussion is a bit artificial.  You probably
+would not be inclined to inject a new version of a function into a standard
+library module.  However, you might be inclined to inject a function (or class
+attribute, or method, module constant, etc.) into a slightly obscure
+third-party library you are utilizing that does _almost but not quite_ what
+you want.  Quite likely you might inject a version derived from the provided
+version, as in the example.  This risks unpleasant surprises when a completely
+different dependency turns out to also utilize that library, in ways that do
+not know about your alteration.
+
+The actual best approach in situations of this sort is to bite-the-bullet and
+simply replace all relevant uses of, e.g. `re.match()` in your code.  If you
+decide to define a function such as `match_positive()` within your codebase,
+that can copy the signature of the original version, and is a straightforward 
+search-and-replace to utilize.  Whenever possible, and indeed _almost always_,
+it is better to leave the provided module function untouched.

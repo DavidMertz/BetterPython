@@ -1,0 +1,185 @@
+== Overchecking For Boolean Values
+
+Nearly all objects in Python are "truthy" or "falsy."  That is to
+say that in a _boolean context_, almost all objects are perfectly usable
+"bare" without wrapping them in `bool()`, and especially not with a completely
+pointless comparison of `obj is True` or `obj is False`. 
+
+While often the `is True` and `is False` are simply unecessary, they can
+sometimes cause actual bugs.  The value you obtain from a
+function call—specifically from a function that you did not write yourself,
+for example from a library—may not be a `True` or `False` since the API only
+guarantees or attempts to return a truthy or falsy value.  Quite often
+assuming a value is an actual boolean will _often_ work, then fail
+unexpectedly where the function utilizes a different type of object, such as
+to communicate a sentinel.
+
+[NOTE]
+.Special cases of truthiness
+====
+As a quick guide, numbers that are equal to 0 are falsy. So are collections
+that are empty.  So are string-like objects of length zero.  Naturally, so are
+the singletons `False` and `None`.  When you see those values in a "boolean
+context" they are equivalent to an actual `False`.  Most other objects are
+truthy.
+
+Well-known objects that are neither truthy nor falsy are NumPy arrays and
+Pandas Series and DataFrames.
+
+[source,python]
+----
+>>> import numpy as np
+>>> import pandas as pd
+>>> arr = np.array([1, 2])
+>>> bool(arr)
+ValueError: The truth value of an array with more than one 
+  element is ambiguous. Use a.any() or a.all()
+
+>>> series = pd.Series([1, 2], index=["A", "B"])
+>>> series
+A    1
+B    2
+dtype: int64
+>>> bool(series)
+ValueError: The truth value of a Series is ambiguous. 
+  Use a.empty, a.bool(), a.item(), a.any() or a.all().
+----
+
+You can define the truthiness of your own classes by including a
++++<code>.__bool__()</code>+++ dunder method.  While you _can_ do something
+else, as we see with NumPy and Pandas, you almost always want to return `True`
+or `False` from that method, according to whatever criteria make sense for
+instances of your custom class.  
+====
+
+Whereas `is True` or `is False` have a narrow edge case where they can make
+sense, using `obj == True` or `obj == False` will always cause a feeling of
+unease among Pythonistas since `True` and `False` are unique identities
+already.  In Python, numbers that aren't zero, and collections that aren't
+empty are truthy, and zeros and empty collections are falsy.  This is as much
+as we want to know for most constructs.  
+
+.Idiomatic Python checks for truthiness
+[source,python]
+----
+>>> tuples = [ (1, 2, 3), (), (4, 5), (9,) ]
+>>> [max(tup) for tup in tuples if tup]            # (1)
+[3, 5, 9]
+>>> for tup in tuples:
+...     if tup:                                    # (1)
+...         print(len(tup))
+...     else:
+...         print("EMPTY")
+...
+3
+EMPTY
+2
+1
+----
+
+(1) Rely on implicit truthiness.
+
+Some variations you might see will try to check more than explicitly than
+needed:
+
+.Unidiomatic Python checks for truthiness
+[source,python]
+----
+>>> [min(tup) for tup in tuples if len(tup)]       # (1)
+[1, 4, 9]
+>>> [min(tup) for tup in tuples if bool(tup)]      # (2)
+[1, 4, 9]
+>>> for tup in tuples:
+...     if (len(tup) > 0) is True:                 # (3)
+...         print(min(tup))
+...
+1
+4
+9
+----
+
+(1) Unnecessary `len()` check.
+
+(2) Unnnecessary `bool()` check.
+
+(3) Triply unnecessary `len()`, inequality comparison, and `is True`.
+
+For the most part, the mistake of coercing actual `True` or `False` values
+from merely "truthy" or "falsy" is simply stylistic and does not harm a
+program operation. But such use has a strong code smell that should be
+avoided. 
+
+Often the habit of spelling out `is True` is borrowed from SQL, where database
+columns might both be of Boolean type and also be
+nullable.footnote:[Effectively, the nullable Booolean type gives you a
+trinary, or "three-valued", logic
+(https://en.wikipedia.org/wiki/Three-valued_logic)]  However, sometimes you
+encounter a similar usage in existing Python code.  In SQL, these checks
+actually do make sense. Essentially For example:
+
+.Use of `= TRUE` in SQL
+[source,sql]
+----
+SQLite version 3.37.2 2022-01-06 13:25:41
+sqlite> CREATE TABLE test (name TEXT, flag BOOL NULL);
+sqlite> INSERT INTO test VALUES ("Bob", TRUE), ("Ann", FALSE), ("Li", NULL);
+sqlite> SELECT name FROM test WHERE flag IS NULL;
+Li
+sqlite> SELECT name FROM test WHERE flag = TRUE;
+Bob
+sqlite> SELECT name FROM test WHERE flag = FALSE;
+Ann
+sqlite> SELECT name FROM test WHERE NOT flag;      # (1)
+Ann
+----
+
+(1) In many SQL dialects, we can get away with Python-like bare value, but
+best practice in that language remains to be explicit.
+
+Sometimes in Python code, you will see a sentinel used within a function that
+normally returns an actual `True` or `False`.  Often this sentinel is `None`,
+but sometimes other values are used.  The problem here, of course, is that a
+sentinel almost certainly has a truthiness which can be deceptive in code
+using such a function.
+
+If you are writing code from scratch, or refactoring it, you are better off
+using an explicit enumeration, utilizing the well-designed `enum` standard
+library module.  But in the real world, you will probably encounter and need
+to use code that does not do this.
+
+."Almost Boolean" function with a sentinel
+[source,python]
+----
+>>> import re
+>>> def has_vowel(s):
+...     "Vowels are a, e, i, o, u ... and sometimes y"
+...     class Maybe:
+...         def __repr__(self):
+...             return "MAYBE"
+...
+...     if re.search(r"[aeiou]", s):
+...         return True
+...     elif "y" in s:
+...         return Maybe()
+...     else:
+...         return False
+...
+>>> has_vowel("Oh no!")                            # (1)
+True
+>>> has_vowel("My my!")                            # (1)
+MAYBE
+>>> if has_vowel(my_phrase) is True:               # (2)
+...     print("The phrase definitely has a vowel")
+...
+----
+
+(1) Arguably OK for printing an answer.
+
+(2) The three-valued logic makes us resort to unpythonic style.
+
+If you are free to redesign this function, you might define `Vowel =
+enum.Enum("Vowel", ["Yes", "No", "Maybe"]` then return `Vowel.Yes`,
+`Vowel.No`, or `Vowel.Maybe` within the function, as appropriate.  Comparisons
+will require an explicit identity (or equality) check, but that clarifies the
+intention better for this case anyway.
+

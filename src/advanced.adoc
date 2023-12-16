@@ -1,0 +1,145 @@
+:chapter: 4
+:sectnums:
+:figure-caption: Figure {chapter}.
+:listing-caption!:
+:table-caption: Table {chapter}.
+:sectnumoffset: 0
+:leveloffset: 1
+
+= Advanced Python Usage
+
+This chapter continues to focus on features of pure-Python—that is to say,
+primarily on built-in functions and a few standard library functions within
+the "almost built-in" subset.  However, as the title suggests, the mistakes
+herein concern features that new or occasional Python programmers do not (yet)
+use every day.
+
+In the _A Grab Bag Of Python Gotchas_ chapter, we already addressed the
+importance of good naming in regard to several patterns, anti-patterns, and
+some outright broken code.  Some of the mistakes we look at in this chapter
+very much reiterate that same theme, but present mistakes advanced
+developers—arguably _too_ advanced for their own good—are likely to make.
+
+Other features that are often misused—and sometimes simply unused when they
+should be—include checking the types of objects, using _iterator algebra_,
+decorators, and a small bit of magic with f-strings.  Some of the topics in
+this chapter might not yet be familiar to you, but reading them will help you
+become aware of new possibilities.
+
+include::advanced/typetype.adoc[leveloffset=+0]
+
+== Naming Things (Revisited)
+
+Good use of names is a basic feature of Pythonic programming.  The earlier
+chapter _A Grab Bag of Python Gotchas_ discussed some concerns with good
+names, here we expand upon that them. These more advanced cases should equally
+be attended to.
+
+include::advanced/builtins.adoc[leveloffset=+1]
+include::advanced/protected.adoc[leveloffset=+1]
+
+== Keep Less-Used Features In Mind
+
+There are number of brilliant features in Python that you very often do not
+need to think about.  However, when the need does arise, it is a mistake not
+to be aware of and utilize these capabilities.
+
+Knowledge is power.  Or at least often it is: the next chapter looks at cases
+where a better mantra might be "ignorance is bliss."
+ 
+include::advanced/f-debug.adoc[leveloffset=+1]
+include::advanced/decorators.adoc[leveloffset=+1]
+include::advanced/itertools.adoc[leveloffset=+1]
+include::advanced/more-iter.adoc[leveloffset=+1]
+
+== Type Annotations Are Not Runtime Types
+
+The use of type-checking tools has become popular among a significant segment
+of Python developers.  As is mentioned in the introductory chapter, this book
+is neither long enough nor appropriately focused to address the various
+mistakes that are possible within type annotations, even stipulating that you,
+or your team, have decided to utilize type annotations.  Whether you *should*
+so decide is specifically not an opinion I will venture in this text.
+
+Use of type annotations is significantly complex, although incremental or
+minimal use is possible, and tools like MyPy, Pytype, Pyright, and Pyre
+implement _gradual type annotations_.footnote:[The concept of gradual typing
+was introduced by Jeremy Siek and Walid Taha in 2006.  See
+https://wphomes.soic.indiana.edu/jsiek/what-is-gradual-typing/ for background.
+A variety of programming languages and tools have implemented this concept,
+even beyond those in the Python ecosystem.]  As Python's standard library
+`typing` module and Python's syntax have grown new capabilities, both the
+sophistication of what can be expressed and the range of possible mistakes has
+grown enormously since 2014's PEP 484, entitled "Type Hints."footnote:[With a
+certain minor pride or vanity, I am fairly confident that my 2015 keynote at
+PyCon Belarus, _Python's (future) type annotation system(s)_ was the first
+public conference presentation of these ideas within the Python world.  That
+said, I have been no more than an observer of a trend, and have contributed
+nothing relevant to the specific directions typing has taken in Python.]
+
+The main thing to keep in mind here is that _type annotations have zero effect
+on runtime behavior_ of Python.  _Mostly_.
+
+[NOTE]
+.Dynamic type evaluation in Python
+====
+As with most topics, certain caveats are needed.  Annotations are available to
+Python programs at runtime, as is pretty much everything about Python that you
+might potentially introspect.  For example:
+
+[source,python]
+----
+>>> def add(a: int, b: int) -> int:
+...     c: int = a + b  # Annotation of `c` not exposed directly
+...     return c
+...
+>>> add.__annotations__
+{'a': <class 'int'>, 'b': <class 'int'>, 'return': <class 'int'>}
+>>> add.__code__.co_varnames
+('a', 'b', 'c')
+>>> import inspect
+>>> inspect.getsource(add)
+'def add(a: int, b: int) -> int:\n    c: int = a + b\n    return c\n'
+>>> import typing
+>>> typing.get_type_hints(add)
+{'a': <class 'int'>, 'b': <class 'int'>, 'return': <class 'int'>}
+----
+
+While it is unusual for a "regular" Python developer to use this
+introspection, the library Pydantic (https://docs.pydantic.dev/) and some
+widely used libraries such as FastAPI (https://fastapi.tiangolo.com/) _do_ use
+this kind of introspection, but wrap it in their own enhanced and useful
+interfaces.
+====
+
+include::advanced/type01.adoc[leveloffset=+1]
+include::advanced/type02.adoc[leveloffset=+1]
+
+== Wrapping Up
+
+In this chapter we looked at a somewhat heterogeneous collection of mistakes,
+but still all within the domain we might call "generic Python concerns."
+Later chapters look at more specialized (but not less important) concerns with
+matters such as testing, data structures, security, and numeric computing.
+
+Two mistakes here recapitulated the mistakes with good naming that started in
+the _A Grab Bag Of Python Gotchas_ chapter.  Good names—and following Pythonic
+conventions about naming—remain important as you become a more sophisticated
+programmer.
+
+Several more mistakes discussed were mistakes of ignorance or forgetfulness.
+Python, in truth, has a few slightly obscure, yet enormously useful, corners
+within it.  Knowing about some capabilities of the Python syntax or standard
+library can often make your work easier, and make your code friendlier for
+others to read.
+
+A final two mistakes concerned a common confusion among new-ish Python
+developers, and especially those more familiar with statically typed
+programming languages.  While the introductory material of this book discussed
+why this book does not specifically delve into the world of static type
+analysis in Python, the presence of type annotations can often mislead some
+programmers.  This book itself, in fact, occasionally uses examples with
+annotations; but it only does so in order to highlight correct reader
+expectations, in other words they are merely a form of documentation for most
+Python users (albeit an often useful form).
+

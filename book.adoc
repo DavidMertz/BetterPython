@@ -1,0 +1,20 @@
+include::common.adoc[]
+:doctype: book
+:toc:
+:toclevels: 3
+
+= Better Python Code: A Guide for Aspiring Experts
+
+include::src/preface.adoc[leveloffset=+1]
+include::src/intro.adoc[leveloffset=+1]
+include::src/looping.adoc[leveloffset=+1]
+include::src/identity.adoc[leveloffset=+1]
+include::src/core.adoc[leveloffset=+1]
+include::src/advanced.adoc[leveloffset=+1]
+include::src/philosophy.adoc[leveloffset=+1]
+include::src/datastruct.adoc[leveloffset=+1]
+include::src/datastruct2.adoc[leveloffset=+1]
+include::src/security.adoc[leveloffset=+1]
+include::src/numeric.adoc[leveloffset+=1]
+include::src/appendix.adoc[leveloffset+=1]
+

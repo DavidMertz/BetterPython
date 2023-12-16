@@ -1,0 +1,114 @@
+:chapter: 2
+:figure-number: 0
+:sectnums:
+:figure-caption: Figure {chapter}.
+:listing-caption!:
+:table-caption: Table {chapter}.
+:sectnumoffset: 0
+:leveloffset: 1
+
+= Confusing Equality With Identity
+
+Most objects in Python are mutable.  Moreover, _all objects_ in Python are
+accessed by reference.  For objects which are immutable, such as strings,
+numbers, or frozensets, comparing for equality or inequality rarely raises a
+concern about whether those objects are also identical.  However, for mutable
+objects such as mutable collections, it becomes very important to distinguish
+identity from mere equality.
+
+In many programming languages, a distinction is made between _pass by value_,
+_pass by address_, and _pass by reference_ (occasionally _pass by name_
+occurs as well). Python behaves most similarly to reference passing, but in 
+Python lingo we often emphasize Python's semantics by calling the behavior 
+_pass by object reference_.  Being thoroughly object-oriented, Python always
+encapsulates its objects, regardless of the scope they exist within.  It's not
+the value that is passed into functions, nor is it a memory address, nor is it
+a variable name, it's simply an _object_.
+
+What becomes important to consider is whether an object passed into a function
+or method is _immutable_.  If it is, then it behaves very much like a passed
+value in other languages (since it cannot be changed at all, therefore not in
+the calling scope).  The particular name an object has in different scopes can
+vary, but the object remains the same under each name.  If that object is
+mutable, it might be mutated within a child scope, changing it within the
+calling scope (or elsewhere within the runtime behavior of a program).
+
+
+[NOTE]
+.Interning commonly used immutable objects
+====
+As an optimization strategy, CPython (and other implementations) sometimes
+reuses the memory allocation for certain objects by treating them as
+pseudo-eternal.  Most notably, _small integers_ and _short strings_ will often
+reuse the identical objects to refer to equal objects that go by different
+names.  
+
+The specific details of when this happens is implementation and version
+dependent, and you should never rely on such behavior within your programs.
+They merely might go faster as a result of these optimizations.  For example,
+CPython and PyPy take very different approaches to "interning" but no
+well-written programs will notice this implementation difference.
+
+.Integer interning
+[source,python]
+----
+>>> a = 5
+>>> b = 2 + 3
+>>> a == b, a is b
+(True, True)
+>>> c = 1_000_000
+>>> d = 999_999 + 1
+>>> c == d, c is d
+(True, False)
+----
+
+.String interning
+[source,python]
+----
+>>> e = "foobar"
+>>> f = "foo" + "bar"
+>>> e == f, e is f
+(True, True)
+>>> g = "flimflam"
+>>> h = ''.join(["flim", "flam"])
+>>> g == h, g is h
+(True, False)
+----
+====
+
+include::identity/id01.adoc[leveloffset=+0]
+include::identity/id02.adoc[leveloffset=+0]
+include::identity/id03.adoc[leveloffset=+0]
+include::identity/id04.adoc[leveloffset=+0]
+include::identity/id05.adoc[leveloffset=+0]
+include::identity/interning.adoc[leveloffset=+0]
+
+== Wrapping Up
+
+The puzzles of equality and identity have stymied many accomplished
+programmers.  In Common Lisp, developers distinguish among `eq`, `equal`,
+`eql` and `equalp`.  In Scheme, they settle for just `=`, `eqv?`, and
+`equal?`.  In Javascript, equality is notoriously, and humorously,
+non-transitive.  A well known diagram (shown in Figure 2.1 as the "theological
+trinity") about JavaScript gives us a perspective into the comparative sanity
+of Python, which maintains transitivity (absent deliberately pathological
+custom classes which can make all horrors possible).
+
+.A joke comparing JavaScript with a theological trinity
+image::images/trinity-javascript-bw-0.svg[width=60%]
+
+In Python we do not have quite so many variations on a theme.  Instead, we
+have a test for identical objects with `is` and a test for _equivalent_
+objects with `==`.  The semantics are relatively straightforward, but many
+mistakes still occur as developers try to decide what they mean between these
+concepts.
+
+A footnote to this chapter might add that while Python's standard library has
+the very useful function `copy.deepcopy()` to recursively copy nested
+collections, there does not exist in the standard library any function for
+`deepequality()` that would, hypothetically, recursively compare such nested
+collections.  A great many recipes you can find online have implemented such a
+thing, but they are each slightly different and none ascend to a ubiquity
+meriting inclusion in these discussions.  This provides an opportunity for you
+to make your very own novel mistake.
+

@@ -1,0 +1,4 @@
+== Not using the modern `@` matrix multiplication operator
+
+(or using `np.matrix` needlessly)
+

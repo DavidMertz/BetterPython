@@ -1,0 +1,30 @@
+= Test Driven Development (or lack thereof)
+
+== This chapter covers
+
+* mistake 1
+* mistake 2
+
+'''
+
+You should really develop software with tests either first, or at least
+concurrent with the code being written.
+
+include::tests/doctest.adoc[leveloffset=+0]
+include::tests/unit.adoc[leveloffset=+0]
+include::tests/pytest.adoc[leveloffset=+0]
+include::tests/cicd.adoc[leveloffset=+0]
+include::tests/static.adoc[leveloffset=+0]
+include::tests/endpoint.adoc[leveloffset=+0]
+include::tests/quirks.adoc[leveloffset=+0]
+include::tests/testtests.adoc[leveloffset=+0]
+
+== Wrapping Up
+
+Rambling rhetorical excesses and absurd erudition goes here.
+
+== Summary
+
+* Do thing one.
+* Do thing two.
+

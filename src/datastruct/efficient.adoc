@@ -1,0 +1,192 @@
+== Efficient Concrete Sequences
+
+Python has a few data structures that are virtual subclasses of
+`collections.Sequence` but that avoid most of the indirection and value boxing
+that Python `list` requires.  These types include `bytes`, `bytearray`, and
+`array.array`.  The last of these is a family of data structures, in the sense
+that it can be configured to hold a variety of identical bit-size elements of
+the same numeric datatype.
+
+There is a relatively narrow domain where it makes sense to use Python's
+standard library `array` module rather than "taking the next step" to use
+NumPy, but within than narrow range of use cases, it is nice to have
+`array.array` available to avoid external dependencies.   Conceptually,
+`bytearray` is very similar to `array.array("B")` in that both are mutable
+unboxed sequences of integer values between 0 and 255 (i.e. bytes).  However,
+the collection of methods each provides are distinct.  `bytearray` has most of
+the same methods as `str`, and is deliberately string-like; in contrast
+`array.array` (of every datatype) has methods much closer to those in `list`.
+
+Just as `tuple` is, in some sense, a "mutable version of `list`," `bytes` is
+"an immutable version of `bytearray`.  The analogy isn't perfect.  Tuples have
+a starkly constrained collection of methods (i.e. exactly two, `.count()` and
+`.index()`) but `bytes` have many methods, most in common with `str`. The 
+built-in type `bytearray` in turn essentially has a superset of the methods 
+of `bytes` (some methods relevant to mutable sequences are only in 
+`bytearray`).
+
+[source,python]
+----
+>>> set(dir(bytearray)) - set(dir(bytes))          # (1)
+{'copy', 'clear', 'remove', 'append', '__alloc__', '__delitem__',
+'__setitem__', 'reverse', 'pop', '__iadd__', 'insert', '__imul__', 
+'extend'}
+----
+
+(1) A few sensible things to do with mutable sequences.
+
+Let's look at a cases where notable (but constant rather than big-O) speed
+differences occur.  For these quick examples, we just use random data; more
+realistically, these bytes might instead be meaningful content in a binary
+format.  Analyzing or transforming such binary data is often an important
+goal.
+
+[source,python]
+----
+>>> from array import array
+>>> with open("/dev/urandom", "rb") as r:
+...     rand_bytes = r.read(2**29)  # 512 MiB
+...
+>>> type(rand_bytes)
+<class 'bytes'>
+>>> rand_bytearray = bytearray(rand_bytes)
+>>> rand_array = array("B", rand_bytes)
+>>> rand_list = list(rand_bytes)
+>>> for a, b, c, d in zip(
+... 		rand_bytes, rand_bytearray, rand_array, rand_list
+...		):
+...     assert a == b == c == d
+...
+>>> rand_list[:3]
+[201, 217, 132]
+----
+
+Superficially, these four types of sequences seem similar.  It took a while to
+run the loop to make sure they have equal elements, but indeed they do.  A
+first notable difference among them is their memory usage.  For the first
+three objects, we can ask the memory usage in a simple way:
+
+[source,python]
+----
+>>> import sys
+>>> f"{sys.getsizeof(rand_bytes):,}"
+'536,870,945'
+>>> f"{sys.getsizeof(rand_bytearray):,}"
+'536,870,969'
+>>> f"{sys.getsizeof(rand_array):,}"
+'570,425,427'
+----
+
+These sizes are not quite identical since their headers vary (and
+`array.array` uses a modest overallocation strategy, similar to `list`).
+However, all of these are close to the 536,870,912 bytes that are the minimal
+possible size to represent all of these random bytes.
+
+The question is somewhat more complicated for `rand_list`.  Lists use a
+relatively aggressive overallocation of slots; but even apart from such
+overallocation of memory, each slot is a pointer to an internal data structure
+used to represent a Python integer.  For byte-sized integers (i.e. between 0
+and 255), this structure occupies 28 bytes.  For larger integers or wider
+floating point numbers, the size of the _boxed number_ increases somewhat,
+albeit slowly.  In concept, a list of integers needs to contain _both_ an
+array of pointer slots (probably 64-bit on modern systems), of roughly the
+length of the array, and _also_, at a different memory address, the underlying
+boxed number.
+
+However, this is further complicated in the current example by the fact that
+_small integers are interned_ in CPython.  This is discussed briefly at the
+start of the chapter _Confusing Equality with Identity_.  It means that all
+the pointers to 8-bit integers have already been allocated when Python starts
+up, and these pointers are simply reused for repeating list slots.  If we were
+working with larger numbers, we would have to multiply the number of
+(non-duplicated) items by the size of the boxed number, and add that to the
+size of the ponter array itself.
+
+[source,python]
+----
+>>> sys.getsizeof(2)
+28
+>>> sys.getsizeof(2**31)
+32
+>>> sys.getsizeof(2**63)
+36
+>>> sys.getsizeof(2**200)
+52
+>>> f"{sys.getsizeof(rand_list):,}"
+'4,294,967,352'
+----
+
+As a ballpark figure, the list version takes about 4 GiB, since 64-bit
+pointers are 8 times as large as 8-bit numbers.  If we were dealing with
+non-interned numbers, the memory story would lean much more heavily against
+`list`.
+
+Often much more important than memory usage, is runtime:
+
+[source,python]
+----
+>>> assert (rand_bytes.count(42) ==                # (1)
+...         rand_bytearray.count(42) ==
+...         rand_array.count(42) ==
+...         rand_list.count(42))
+>>> %timeit rand_bytes.count(42)
+178 ms ± 501 µs per loop (mean ± std. dev. of 7 runs, 10 loops each)
+>>> %timeit rand_bytearray.count(42)
+179 ms ± 1.49 ms per loop (mean ± std. dev. of 7 runs, 10 loops each)
+>>> %timeit rand_array.count(42)
+5.5 s ± 33.6 ms per loop (mean ± std. dev. of 7 runs, 1 loop each)
+>>> %timeit rand_list.count(42)
+4.88 s ± 17.3 ms per loop (mean ± std. dev. of 7 runs, 1 loop each)
+----
+
+(1) Sanity check that the counts will be identical.
+
+It's impressive how much faster counting on `bytes` or `bytesarray` are than
+on `list`.  It's disappointing that the similar data structure `array.array`
+doesn't achieve similar results (even coming in slightly worse than `list`).
+The reason for this is that in CPython, `array.array.count()` still uses the
+same indexing machinery as other pure-Python sequences.  This has been a
+"known issue" in CPython since at least 2015 and Python 3.7—no core developers
+have felt it is one that needs to be fixed, however, since as soon as you
+start asking this question, the answer is _almost always_ "use NumPy" (which
+solves an enormous number of other problems at the same time).
+
+Of course, the example only used 8-bit unsigned integers.  If you wanted to
+store 16-, 32-, or 64-bit signed or unsigned integers, or floating point
+numbers of system width (usually 64-bit nowadays), `bytearray` would clearly
+not be an option.  Also, in these cases, `array.array` would pull modestly
+ahead of `list` because of interning.  As a redemption for `array.array`, we
+can notice that it _is_ still much faster than `list` in a range of other
+situations where we work with sequences of numbers of the same underlying
+machine type. For example:
+
+[source,python]
+----
+>>> rand_arr2 = rand_array[:-1]
+>>> rand_arr3 = rand_array[:-1]
+>>> rand_arr2 is rand_arr3                         # (1)
+False
+>>> rand_arr2 == rand_arr3                         # (2)
+True
+>>> %timeit rand_arr2 == rand_arr3
+196 ms ± 2.42 ms per loop (mean ± std. dev. of 7 runs, 1 loop each)
+>>> rand_list2 = rand_list[:-1]
+>>> rand_list3 = rand_list[:-1]
+>>> %timeit rand_list2 == rand_list3
+886 ms ± 12.4 ms per loop (mean ± std. dev. of 7 runs, 1 loop each)
+----
+
+(1) Slices create genuinely new objects, copying the old ones.
+
+(2) These distinct objects remain equal.
+
+The speedup from `list` isn't as dramatic as the 30x difference in counting on
+`bytes`, but 4.5x is a worthwhile speedup if the underlying operation matters
+in your application.
+
+There are a lot of corners where non-`list` sequences will speed things up,
+where they won't, and where they simply are not suitable for the
+purpose at hand.  For many cases where you need to work with sequences of
+numbers, however, it is very much worth keeping these other sequences in mind
+as options.
+

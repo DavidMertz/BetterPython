@@ -1,0 +1,139 @@
+== F-String Debugging 
+
+There are a few gotchas throughout this book where the mistake in question is
+simply ignorance of a useful feature.  Everything that we can do using
+_debugging f-strings_ is perfectly well possible by other means; using this
+technique just makes code look nicer and lets you debug your code just a
+little bit easier.
+
+A small, but surprisingly cool, feature introduced in Python 3.8 was a format
+for f-strings using the pattern `f"{var=}"`.  All this formatting style does is
+create a formatted string with a variable _name_ accompanying its value that is
+formatted per the usual f-string (format string) rules.  A slightly more
+verbose spelling is merely `f"var={var}"`.
+
+In an earlier discussion, in the _A Grab Bag Of Python Gotchas_ chapter, we
+looked at why "bare" or overly generic exceptions are a mistake, and how to fix
+that.  The code below arguably uses an overly generic exception, but it can be
+useful in the process of getting exception handling as fine-tuned as we would
+like it to be.
+
+.Source code of `code/divide1b.py`
+[source,python]
+----
+#!/usr/bin/env python
+import sys
+numerators = sys.argv[1]
+denominators = sys.argv[2]
+
+try:
+    ratios = []
+    num_fh = open(numerators)
+    den_fh = open(denominators)
+    for string_a, string_b in zip(num_fh, den_fh, strict=True):
+        a = float(string_a.strip())
+        b = float(string_b.strip())
+        ratios.append(a/b)
+	print([f"{r:.3f}" for r in ratios]) 
+except Exception as err:
+    print("Unable to perform divisions")
+----
+
+As we saw with that earlier discussion utilizing almost this same small
+program, a great many different things can go wrong in this script.  In a few
+paragraphs we'll see specific causes of the errors shown generically in:
+
+[source,shell]
+----
+[BetterPython]$ code/divide1b.py numerators1.txt denominators1.txt
+Unable to perform divisions
+[BetterPython]$ code/divide1b.py numerators1.txt denominators2.txt
+Unable to perform divisions
+[BetterPython]$ code/divide1b.py numerators1.txt denominators3.txt
+Unable to perform divisions
+[BetterPython]$ code/divide1b.py numerators1.txt denominators4.txt
+Unable to perform divisions
+[BetterPython]$ code/divide1b.py numerators1.txt denominators5.txt
+['0.738', '1.150', '2.000', '0.326', '0.000', '0.963']
+----
+
+The example here, as in most discussions, is toy code. However, one might
+easily find similar logic inside a function within a library or application
+being developed.  In fact, this function might be in use for a long while
+without any of these constructed error cases being encountered.  We would like
+to sort out _what_ is going wrong in each example.
+
+Using an actual debugger is absolutely a worthwhile approach.footnote:[I
+personally have a special fondness for PuDB (https://documen.tician.de/pudb/),
+which like IPython pdb (https://github.com/gotcha/ipdb) is built on the
+standard library module pdb (https://docs.python.org/3/library/pdb.html).
+Most developers, however, probably prefer the more graphical debuggers
+incorporated with GUI editors or IDEs like VS Code or PyCharm.]  Moreover,
+sending the more detailed information printed below to a logging system is
+often desirable.  For the example, let's just make the printed errors more
+informative.
+
+.Source code of `code/divide1c.py`
+[source,python]
+----
+#!/usr/bin/env python
+import sys
+numerators = sys.argv[1]
+denominators = sys.argv[2]
+num_fh = den_fh = string_a = string_b = None
+
+try:
+    ratios = []
+    num_fh = open(numerators)
+    den_fh = open(denominators)
+    for string_a, string_b in zip(num_fh, den_fh, strict=True):
+        a = float(string_a.strip())
+        b = float(string_b.strip())
+        ratios.append(a/b)
+    print([f"{r:.3f}" for r in ratios])
+except Exception as err:
+    print("Unable to perform divisions")
+    print(f"{err=}\n{numerators=}\n{denominators=}\n"
+          f"{num_fh=}\n{den_fh=}\n{string_a=}\n{string_b=}")
+----
+
+Trying out two of the broken cases, it becomes much easier to understand what
+goes wrong.  From there, we can decide how best to go about preventing or
+catching the specific problems.
+
+[source,shell]
+----
+[BetterPython]$ code/divide1c.py numerators1.txt denominators1.txt
+Unable to perform divisions
+err=ZeroDivisionError('float division by zero')
+numerators='data/numerators1.txt'
+denominators='data/denominators1.txt'
+num_fh=<_io.TextIOWrapper name='data/numerators1.txt' mode='r' 
+	encoding='UTF-8'>
+den_fh=<_io.TextIOWrapper name='data/denominators1.txt' mode='r' 
+	encoding='UTF-8'>
+string_a='3\n'
+string_b='0\n'
+
+[BetterPython]$ code/divide1c.py numerators1.txt denominators3.txt
+Unable to perform divisions
+err=PermissionError(13, 'Permission denied')
+numerators='data/numerators1.txt'
+denominators='data/denominators3.txt'
+num_fh=<_io.TextIOWrapper name='data/numerators1.txt' mode='r' 
+	encoding='UTF-8'>
+den_fh=None
+string_a=None
+string_b=None
+----
+
+You are free to use the regular formatting options for f-strings in combination
+with the special `=` marker.  For example:
+
+[source,python]
+----
+>>> from math import pi
+>>> f"{pi=:<0.6f}"
+'pi=3.141593'
+----
+

@@ -1,0 +1,55 @@
+:chapter: 1
+:sectnums:
+:figure-number: 0
+:figure-caption: Figure {chapter}.
+:listing-caption!:
+:table-caption: Table {chapter}.
+:sectnumoffset: 0
+:leveloffset: 1
+
+= Looping Over The Wrong Things
+
+As in most procedural programming languages, Python has two kinds of loops,
+`for` and `while`.  The semantics of these is very similar to that in most
+analogous languages. However, Python puts a special emphasis on looping _over_
+iterables—including _lazy_ iterables along with concrete collections—which
+many languages do not do.  Many of the mistakes in this section are "best
+practice" in other programming languages, but either stylistically flawed or
+unnecessarily fragile when translated too directly into Python.
+
+Technically, Python also allows for recursion, which is another way of
+"looping," but recursion depth is limited in Python, and tail-call
+optimization (see https://en.wikipedia.org/wiki/Tail_call) is absent.
+Recursion can be enormously useful for problems that are naturally
+_subdivided_ as a means of their solution, but it is rarely a good approach in
+Python for constructing a mere _sequence_ of similar actions.  
+
+None of the mistakes in this section deal specifically with recursion, but for
+programmers coming from Lisp-family languages, ML-family languages, or perhaps
+Haskell, Rust, Lua, Scala, or Erlang: While recursion may be a good habit in
+the language you used to program, it _can be_ a bad habit for Python.
+
+include::looping/loop01.adoc[leveloffset=+0]
+include::looping/loop02.adoc[leveloffset=+0]
+include::looping/loop03.adoc[leveloffset=+0]
+include::looping/loop04.adoc[leveloffset=+0]
+include::looping/loop05.adoc[leveloffset=+0]
+include::looping/loop06.adoc[leveloffset=+0]
+include::looping/loop07.adoc[leveloffset=+0]
+include::looping/loop08.adoc[leveloffset=+0]
+
+== Wrapping Up
+
+One of the loveliest elements of modern Python is its emphasis of looping over
+iterables, including those that are not concrete collections.  In some later
+mistakes in the chapter on _Advanced Python Usage_, we look at explicit
+"iterator algebra."  For this chapter, which like the last reflects patterns
+and habits you will use nearly every time you write Python code, we have
+emphasized Python's focus on looping _over_ the data you are actually
+concerned with rather than over indirections towards it.
+
+Beyond those mistakes that guide you to emphasize the right things to loop
+over, we also looked at the danger of mutating concrete collections during
+iteration and at how `while` loops, when they are the more elegant approach,
+can benefit from use of the new-ish walrus operator.
+

@@ -1,0 +1,152 @@
+:chapter: 8
+:sectnums:
+:figure-caption: Figure {chapter}.
+:listing-caption!:
+:table-caption: Table {chapter}.
+:sectnumoffset: 0
+:leveloffset: 1
+
+= Security
+
+This book is not the one you should read to understand either cryptography or
+computer security built on top of cryptographic primitives.  Of course, in a
+very general way, it's a mistake to wire money to fraudulent entities phishing
+under various get-rich-quick or tug-on-heart-strings pretenses. However,
+that's life advice that might touch on using computers, not Python advice.
+
+What the mistakes in this chapter discuss are simply approaches to security
+concerns that I have frequently seen Python developers do badly.  Often this
+reflects a misunderstanding of some very general security concepts. At other
+times an unawareness of the appropriate modules and functions to use (standard
+libary or third-party) is evidenced.
+
+For an actual background on cryptography, Bruce Schneier's _Applied
+Cryptography: Protocols, Algorithms, and Source Code in C_ is a quite old, but
+still classic, text (Second edition 1996, John Wiley & Sons, ISBN
+978-1119096726; it even has a few errata corrected from first edition by your
+current author).  Schneier's somewhat more recent 2010 text, with co-authors
+Niels Ferguson and Tadayoshi Kohno, _Cryptography Engineering: Design
+Principles and Practical Applications_ is also excellent (John Wiley & Sons,
+ISBN 978-0470474242).
+
+There is a distinction to be made between cryptography and security, with the
+latter being more broad.  Cryptography is an important element of secure
+software designs, but it is not the only concern, nor even the only building
+block.  Cryptography concerns itself with mathematical mechanisms of enforcing
+confidentiality, integrity, non-repudiation, and authentication.  Security
+more broadly concerns itself also with risk management, access control,
+classification of information, business continuity, disaster recovery, and
+laws and regulations.  Addressing the broad security concerns often utilizes
+cryptographic protocols, but puts them in context of a general "threat model"
+against which protection is sought.footnote:[The term _threat model_ is a
+rather elegant one, to my eyes; but it's also likely unfamiliar to many
+readers.  It basically amounts to posing a collection of "what if?" questions
+about potential (malicious) actions which might cause a failure in computer
+systems.  What are the ways the system _can possibly_ go wrong? This is only
+occasionally a matter of "someone breaks the encryption protocol." Far more
+often concerns like "social engineering" (convincing people to act unwisely
+through misrepresentation) or denial-of-service (causing systems to break
+without an intruder per se getting access to information) are threats
+modeled.]
+
+Threat modelling and security procedures involve many concerns beyond what
+Python programmers can do or not do.  For example, it considers corporate
+training about when and with whom employees should share secrets. It includes
+physical locks on buildings.  It includes procedures used for in-person or
+telephone verification of an identity. It includes background checks before
+giving humans particular access right.  It includes physical securing of
+transmission wires or server rooms.
+
+You don't need to read any of the recommended external texts to understand
+this chapter, but they provide some general background to the mathematical and
+algorithmic design of particular functions and modules this chapter discusses.
+The broader concerns around "social engineering" (i.e. convincing people to do
+things that compromise security) are even further outside the direct scope of
+this chapter.
+
+== Kinds Of Randomness
+
+The module `random` in the standard libary—with the exception of the
+`random.SystemRandom()` class—uses the Mersenne Twister (MT) pseudo-random
+number generator (PRNG).footnote:[See a description of Mersenne Twister at
+https://en.wikipedia.org/wiki/Mersenne_Twister.]  This algorithm is used by
+numerous other programming languages and libraries; older languages and
+libraries might use linear congruential generators (LCG),footnote:[See a
+desciption of linear congruential generators at
+https://en.wikipedia.org/wiki/Linear_congruential_generator.] and some newer
+systems use permuted congruential generators (PCG).footnote:[See a description
+of permuted congruential generators at
+https://en.wikipedia.org/wiki/Permuted_congruential_generator].  Several other
+pseudo-random are occasionally used.  
+
+A great deal of mathematical theory goes into each of these, but PRNGs all
+operate in a similar manner at a high level.  They begin with a state, derived
+from a seed.  Then they deterministically move between a very large cycle of
+other states (for example, among `2**19937–1` states for MT).  The
+distribution of states _resembles_ a stochastic process according to numerous
+statistical tests, but it is actually a completely deterministic progression
+from the current state.  If you know the current state, you know with
+certainty exactly what the next state will be.
+
+The module `secrets` in the standard libary builds on `random.SystemRandom()`,
+but it is nearly always better practice to use the wrappers within `secrets`.
+The purpose of `secrets` is to generate non-repeatable, cryptographically
+strong, random numbers.  The functions in `secrets()` utilize system entropy
+(what is called `/dev/random` on Unix-like systems) and will actually block
+(if needed, which is uncommon) until sufficient entropy becomes available to
+provide "random" data.  Entropy comes from interrupt timing for various kinds
+of devices (e.g. disk, keyboard, network), CPU execution time jitter, and
+hardware RNGs if they are available.
+
+include::security/secrets.adoc[leveloffset=+1]
+include::security/random.adoc[leveloffset=+1]
+
+// Other topics
+include::security/src-secret.adoc[leveloffset=+0]
+include::security/rolling.adoc[leveloffset=+0]
+include::security/tls.adoc[leveloffset=+0]
+include::security/requests.adoc[leveloffset=+0]
+include::security/sql-inject.adoc[leveloffset=+0]
+include::security/assert.adoc[leveloffset=+0]
+
+== Wrapping Up
+
+In Python, as in every modern programming language, a background concern in
+the creation of any software system is the vulnerabilities it might create.
+Software can do things wrong in the sense of not producing the output or
+interactions that we had in mind when writing it; but it can also do things
+wrong in the sense of allowing bad actors to cause harm through the use of
+that software.
+
+Genuine security analysis of software is a broad topic, and one requiring a
+great deal of knowledge ranging over many things not in this book.  However,
+there are a number of often repeated mistakes that Python developers make,
+each of which can be relatively straightforwardly rectified by following the
+advice of this chapter.  These few things will not address all possible
+concerns, but they will fix surprisingly much of what we Python developers
+often get wrong.
+
+For a more in-depth look at a number of security issues, the Open Worldwide
+Application Security Project® (OWASP; https://owasp.org/) is a good resource.
+They discuss and provide resources for some of the vulnerabilities I discuss,
+and for a great many others as well.
+
+There are a many security mistakes not specifically addressed in this chapter,
+of necessity.  Security is a broad concern, with many books wholly about it,
+and many professionals employed to understand a range of concerns.  However, a
+few mistakes that are already well-described in the Python documentation are
+still worth quickly mentioning.
+
+* Unpickling pickles with uncontrolled sources can cause execution of
+  arbitrary code.
+* Loading YAML has the same concern as with pickles, but an easy solution is
+  `yaml.safe_load()`.
+* Loading XML can enable denial-of-service attacks; these are discussed in
+  detail at https://docs.python.org/3/library/xml.html.
+* Temporary files created with `tempfile.mktemp()` are unsafe, but Python
+  documents this and provides `tempfile.mkstemp()` as a drop-in replacement.
+
+Use the right libraries.  Choose a few of the right APIs. Avoid some missteps
+that will be obvious once you internalize the mistake in this chapter.  After
+those few small actions, the so-called _attack surface_ of the software you
+create will be vastly reduced.

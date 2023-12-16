@@ -1,0 +1,325 @@
+== Non-Obvious Behaviors Of Numeric Datatypes
+
+The so-called "numeric tower" in Python is more of a "garden of forking
+paths."footnote:[The phrase "garden of forking paths" is borrowed from the
+translated title of Jorge Luis Borges' wonderful 1941 short story _El jardín
+de senderos que se bifurcan_.]  As with many edge cases in Python, there are
+widely discussed and well-reasoned motivations for things being as they are.
+These reasons are not necessarily obvious to ordinary developers.  Getting
+these details wrong can lead to you mistakenly winding up with an unexpected
+numeric datatype.
+
+In parallel with the concrete numeric types provided within Python's
+built-ins, or in modules in its standard libary, are a hierarchy of _abstract
+base classes_ within the module `numbers`.  These abstract base classes *can*
+be inherited from if you implement the relatively large collection of methods
+they require; however, more often they are used for purposes of "virtual
+inheritance."  Before we get there, let's look at the actual inheritance
+diagram of numeric types, including the abstract ones (marked in italic and
+with rounded edges in the Figure 9.1).
+
+.Python's numeric garden
+image::images/Numeric-garden.png[]
+
+[NOTE]
+.A digression on virtual parents
+====
+Let's take a look at an abstract base class.  For this purpose, we wish to
+create a class called `BigNumber` whose instances "contain" all big numbers
+(of all comparable numeric types, in fact).  The class doesn't do much else,
+nor much useful, but _virtually_ contains all the big numbers (here defined as
+more than one thousand).
+
+[source,python]
+----
+>>> class BigNumber:
+...     def __contains__(self, value):
+...         return value > 1000
+...
+>>> big_numbers = BigNumber()
+>>> 5.7 in big_numbers
+False
+>>> 1_000_000 in big_numbers
+True
+
+>>> from collections.abc import Container
+>>> isinstance(big_numbers, Container)
+True
+>>> BigNumber.__mro__
+(<class '__main__.BigNumber'>, <class 'object'>)
+----
+
+Even though `Container` is nowhere in the inheritance tree of `BigNumber`, the
+mere fact it implements the required protocol of having a
++++<code>.__contains__()</code>+++ method makes it act _as if_ it did have
+that ancestor class.
+====
+
+The abstract classes within the module `numbers` are "virtual parents" of
+various concrete numeric classes.  However, the particular parents-child
+relationships that exist virtually are not necessarily the ones that make
+obvious sense.
+
+.Estranged children
+[source,python]
+----
+>>> from fractions import Fraction
+>>> from decimal import Decimal
+>>> frac = Fraction(1, 1)
+>>> dec = Decimal("1.0")
+>>> 1 == 1.0 == Fraction(1, 1) == Decimal("1.0")   # (1)
+True
+
+>>> (1.0).as_integer_ratio()                       # (2)
+(1, 1)
+>>> (0.3).as_integer_ratio()                       # (2)
+(5404319552844595, 18014398509481984)
+
+>>> isinstance(1, numbers.Integral)                # (3)
+True
+>>> isinstance(1, numbers.Rational)                # (4)
+True
+>>> isinstance(frac, numbers.Integral)             # (5)
+False
+>>> isinstance(frac, numbers.Rational)             # (6)
+True
+>>> isinstance(dec, numbers.Integral)              # (5)
+False
+>>> isinstance(dec, numbers.Rational)              # (7)
+False
+>>> isinstance(dec, numbers.Real)                  # (7)
+False
+>>> isinstance(dec, numbers.Number)                # (8)             
+True
+>>> isinstance(0.3, numbers.Rational)              # (9)
+False
+>>> isinstance(0.3, numbers.Real)                  # (9)
+True
+----
+
+(1) Various kinds of "one" are equal to each other.
+
+(2) Every float is ratio of integers, even if approximated in base-2.
+
+(3) Sensibly, integers are Integral.
+
+(4) And Integral numbers inherit from Rational.
+
+(5) Fractions and Decimals are not generally Integral, even when equal to int.
+
+(6) A Fraction is indeed a synonym for Rational.
+
+(7) A Decimal is finitely many digits, why not Rational, nor even Real?!
+
+(8) And yet, Decimal _is_ a Number!
+
+(9) Why is a float with numerator and denominator Real but not Rational?!
+
+=== Cycles Within Cycles Of Confusion
+
+It is very hard to reconcile the virtual parentage of Python concrete numeric
+datatypes with what I learned in middle-school algebra.  Some of the fault can
+be assigned to IEEE-754 floating point numbers, the subject of numerous
+mistakes addressed in this book.  However, even other numeric types without
+rounding errors suffer oddities as well.
+
+Moreover, we can wonder what happens when we perform an operation that
+combines different kinds of numbers.
+
+.Comingling with `decimal.Decimal` numbers
+[source,python]
+----
+>>> dec + 1
+Decimal('2.0')
+>>> 1 + dec
+Decimal('2.0')
+>>> dec + 1.0
+[...]
+TypeError: unsupported operand type(s) for +: 
+	'decimal.Decimal' and 'float'
+
+>>> dec + frac
+[...]
+TypeError: unsupported operand type(s) for +: 
+	'decimal.Decimal' and 'Fraction'
+>>> dec + 1+0j
+[...]
+TypeError: unsupported operand type(s) for +: 
+	'decimal.Decimal' and 'complex'
+----
+
+Decimal numbers mostly refuse to engage in operations with other kinds of
+numbers, but make an exception for integers.  One might question this decision
+by Python since `decimal.Decimal` already carries a specific precision, and
+could simply round even if a result would be inexact, but the decision isn't
+obviously wrong.
+
+What seems worse is the tendency of `float` to take over almost anything else
+it interacts with.
+
+.One datatype to rule them all (almost)
+[source,python]
+----
+>>> frac + frac
+Fraction(2, 1)
+>>> frac + 1, 1 + frac                             # (1)
+(Fraction(2, 1), Fraction(2, 1))
+
+>>> frac + 1.0, 1.0 + frac                         # (2)
+(2.0, 2.0)
+>>> 1 + 1.0, 1.0 + 1                               # (2)
+(2.0, 2.0)
+
+>>> f"{frac + 0.3:.17f}"                           # (3)
+'1.30000000000000004'
+>>> frac + Fraction(0.3)                           # (3)
+Fraction(23418718062326579, 18014398509481984)
+
+>>> frac + Fraction("0.3")                         # (4)
+Fraction(13, 10)   
+----
+
+(1) Integers are quite deferential to other datatypes.
+
+(2) Floating point tends to take over, which might not be terrible.
+
+(3) Floating point initializer loses precision before creating a `Fraction`.
+
+(4) A string initializer produces the simplest exact fraction.
+
+=== Trying To Maintain Precision
+
+We have seen that floating point numbers—under the hood—are always just
+imprecise fractions for the rational number we want.  There _is_ a good
+reason that floating point numbers are used so widely: working precisely with
+rational numbers often grows resulting numerator and denominator unboundedly.  
+
+As we combine various fractions with large least common denominators, the size
+of numerators and denominators grows, operations become slower, and more
+memory is consumed.  Small examples we could show here using a handful of
+numbers, will never become that bad; but real-world code that performs
+millions or billions of numeric operations can quickly become burdensomely
+sluggish.  IEEE-754 is a reasonable compromise.footnote:[Posits and Unums
+(https://en.wikipedia.org/wiki/Unum_(number_format)) are a proposed
+alternative machine representation for approximations of real numbers that in
+many ways use a finite number of bits more efficiently, and that can be
+hardware-friendly.  They have not yet been widely adopted, but it is possible
+they will be in the future.]
+
+Although floating point approximations of rational numbers can easily have
+seemingly insanely large numerator and denominators, the `fractions.Fraction`
+class provides a rough and heuristic way to limit this at the cost of
+introducing its own kind of numeric error.
+
+[source,python]
+----
+>>> f"{0.3:.17f}"                                  # (1)
+'0.29999999999999999'
+>>> Fraction(*(0.3).as_integer_ratio())            # (2)
+Fraction(5404319552844595, 18014398509481984)
+>>> Fraction(*(0.3).as_integer_ratio()).limit_denominator(1000)
+Fraction(3, 10)                      
+>>> Fraction(*(0.3).as_integer_ratio()).limit_denominator(9)
+Fraction(2, 7)
+----
+
+(1) No precise representation of 0.3 is possible in base-2.
+
+(2) It would be nice to obtain a much simpler `Fraction(3, 10)`
+
+Limiting the denominator manually can often produce the _result we want_.
+Unfortunately, there is no obvious or computable rule about exactly how much
+of a limitation we actually _want_ in the abstract.  In simple examples like
+that shown, the choice seems obvious; but there is no mechanism to provide
+that in a completely general way.
+
+=== Casting Down
+
+Rather than allow floats to annex all the results from operations that combine
+`Fraction` with `float`, we could create a custom class to do the reverse.
+Yes, we might need to consider periodic approximation with
+`Fraction.limit_denominator()`, but the rounding would be our explicit choice.
+For example, let's start with this:
+
+[source,python]
+----
+>>> class Ratio(Fraction):
+...     def __add__(self, other):
+...         if isinstance(other, float):
+...             numerator, denominator = other.as_integer_ratio()
+...             other = Fraction(numerator, denominator)
+...             self = Fraction(self.numerator, self.denominator)
+...         return Ratio(self + other)
+...
+>>> Ratio(3, 10) + 0.3
+Ratio(54043195528445951, 90071992547409920)
+>>> 0.3 + Ratio(3, 10)                             # (1)
+0.6
+>>> f"{0.3 + Ratio(3, 10):.17f}"
+'0.59999999999999998'
+----
+
+(1) The Python shell performs some "friendly" rounding in its display, so we
+might mistakenly think it is producing an exact result.
+
+We've moved in the right direction.  The `Ratio` class can cause addition with
+a float to maintain a `Ratio`.  However, we lost commutivity in the process.
+That was an easily rectified oversight.
+
+[source,python]
+----
+>>> class Ratio(Fraction):
+...     def __add__(self, other):
+...         if isinstance(other, float):
+...             numerator, denominator = other.as_integer_ratio()
+...             other = Fraction(numerator, denominator)
+...             self = Fraction(self.numerator, self.denominator)
+...         return Ratio(self + other)
+...
+...     __radd__ = __add__
+...
+>>> 0.3 + Ratio(3, 10)
+Ratio(54043195528445951, 90071992547409920)
+>>> Ratio(3, 10) + 0.3
+Ratio(54043195528445951, 90071992547409920)
+----
+
+The problem is that we've only handled addition this way.  Other operators
+obviously exist as well:
+
+[source,python]
+----
+>>> Ratio(3, 10) * 1.0
+0.3
+----
+
+Adding a full suite of dunder methods for all the operators would be
+straighforward, merely slightly tedious.  Start with
++++<code>.__mul__()</code>+++ and +++<code>.__rmul__()</code>+++ and work your
+way through the rest in similar fashion.
+
+=== What To Do With All Of These Numbers?
+
+If we enforce a rule within our own projects that all the numbers we are
+operating on are `decimal.Decimal`, or that they are all `fractions.Fraction`,
+operations will remain sensible.  It creates doubts about the meaningfulness
+of the hierarchy of numeric virtual types, but we would remain within just one
+numeric domain.
+
+As mentioned earlier, the problem with the domain of `Fraction` is that as
+numerator and denominator often grow unboundedly larger as a result of
+performing many operations, the speed and memory usage get dramatically worse.
+Doing many calculations on many numbers can become a major bottleneck in this
+numeric domain.
+
+The domain of `Decimal` remains a fixed length, which can be set by a context
+(defaulting to 28 digits), and is reasonably fast in performing operations.
+Floating point remains about 2-5x faster than `Decimal` at a similar
+precision, but the latter is not terrible.  The problem is that for scientific
+or other observation-based measurements, base-2 minimizes the accumulation of
+numeric bias _far better_ than does base-10.  Base 10 is easier for most
+humans to understand, but its rounding errors are *not* numerically superior.
+
+Using a bit of cleverness—arguably too much of it—we could also create custom
+classes that forced results of operations into their own numeric domain, as
+shown, in partially fleshed-out form, with the `Ratio` class.

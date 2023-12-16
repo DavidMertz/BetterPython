@@ -1,0 +1,132 @@
+== Using The Third-Party `requests` Library
+
+The Python standard library provides several mid-level capabilities within the
+`urllib` module, and specifically within its `urllib.request`, `urllib.error`,
+`urllib.parse`, and `urllib.robotparser` submodules.  For low-level SSL/TLS,
+it is possible to work with the standard library `ssl` module.
+
+The `urllib.request` documentation
+(https://docs.python.org/3/library/urllib.request.html#module-urllib.request)
+states:
+
+[quote,Python Documentation,urllib.request]
+The urllib.request module defines functions and classes which help in opening
+URLs (mostly HTTP) in a complex world — basic and digest authentication,
+redirections, cookies and more.
+
+This very same page immediately states, however, that the third-party
+`requests` package (https://requests.readthedocs.io/en/latest/) is
+"recommended for a higher-level HTTP client interface."  There is a good
+reason for this recommendation: working with the low-level modules Python's
+standard library provides is cumbersome and error prone.  You very rarely need
+to deal with the low-level details of SSL/TLS contexts, DNS resolution,
+proxies, and many other issues that are needed to make HTTP(S) requests on the
+modern web.
+
+There is a very crucial part of the quoted documentation to pay attention to:
+"mostly HTTP."  Using `urllib.request` with modern HTTPS websites (or
+microservices) is exceedingly difficult.  It is *possible*, but only just
+barely and after great frustration.
+
+For example, a footnote in this chapter mentions challenges accompanying this
+book.  It happens that my website is proxied by Cloudflare
+(https://www.cloudflare.com/) to provide it with SSL/TLS and content caching
+(under their free plan, for my limited needs); the underlying content is
+contained on GitHub Pages (https://pages.github.com/).  On my local computer I
+use a VPN.  None of this is an uncommon kind of configuration for static
+pages, but it is indeed not a 2003-style page on a single server with a fixed
+DNS entry.
+
+Let's try to retrieve that page:
+
+.Retrieving an HTTPS page using `requests`
+[source,python]
+----
+>>> import requests
+>>> domain = "www.gnosis.cx"
+>>> resource = "mistakes"
+>>> resp = requests.get(f"https://{domain}/{resource}/")
+>>> resp.status_code
+200
+>>> for header in ["Content-Type", "Date", "Server"]:
+...     print(f"{header}: {resp.headers[header]}")
+...
+Content-Type: text/html; charset=utf-8
+Date: Mon, 20 Feb 2023 03:37:25 GMT
+Server: cloudflare
+>>> len(resp.text)
+24974
+----
+
+There is nothing difficult here, and I feel confident that the maintainers of
+`requests` are following all relevant security and transport protocols.  What
+about if we try to do the same thing with the Python standard library?
+
+.Failing to retrieve an HTTPS page using `urllib`
+[source,python]
+----
+>>> import urllib.request
+>>> try:
+...     url = f"https://{domain}/{resource}/"
+...     resp = urllib.request.urlopen(url)
+... except Exception as err:
+...     print(f"{err.__class__.__name__}: {err}")
+...
+HTTPError: HTTP Error 403: Forbidden               # (1)
+
+>>> import ssl                                     # (2)
+>>> try:
+...     ctx = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+...     url = f"https://{domain}/{resource}/"
+...     resp = urllib.request.urlopen(url, context=ctx)
+... except Exception as err:
+...     print(f"{err.__class__.__name__}: {err}")
+...
+URLError: <urlopen error Cannot create a client socket with a
+PROTOCOL_TLS_SERVER context (_ssl.c:795)>
+
+>>> cert = ssl.get_server_certificate((domain, 443))
+>>> print(f"{cert[:157]}\n...\n{cert[-145:]}")     # (3)
+-----BEGIN CERTIFICATE-----
+MIIFMTCCBNigAwIBAgIQDJeUxb0DI0d5ZhI2SbcvOzAKBggqhkjOPQQDAjBKMQsw
+CQYDVQQGEwJVUzEZMBcGA1UEChMQQ2xvdWRmbGFyZSwgSW5jLjEgMB4GA1UEAxMX
+...
+
+MAoGCCqGSM49BAMCA0cAMEQCIFv5r9ARdjfr5ctvjV57d2i18tOwGWRAsT9HwDr/
+zyy8AiA4V5gjyLS5wRF24bqfyly64AnKQqOJyAMMCXy5HAK95A==
+-----END CERTIFICATE-----
+
+>>> import socket                                  # (4)
+>>> answers = socket.getaddrinfo("www.gnosis.cx", 443)
+>>> (family, type_, proto, canonname, (address, port)) = answers[0]
+>>> address
+'172.67.139.241'
+
+>>> try:
+...     ctx = ssl.create_default_context(cadata=cert)
+...     url = f"https://{address}:{port}/{resource}/"
+...     resp = urllib.request.urlopen(url, context=ctx)
+... except Exception as err:
+...     print(f"{err.__class__.__name__}: {err}")
+...
+URLError: <urlopen error [SSL: WRONG_VERSION_NUMBER] wrong 
+version number (_ssl.c:992)>
+----
+
+(1) Trigger a frantic search for error explanations at this point.
+
+(2) The Python docs and some user bugs suggest we need an SSL/TLS context.
+
+(3) Some vague hints suggest we are not finding the needed certificate. 
+
+(4) Or maybe we need the actual IP address DNS resolves to?
+
+I am confident that there genuinely is _some magic incantation_ that would
+convince Python's standard library to fetch the content of this rather
+ordinary, static, web page.  With a great deal more effort, I would probably
+eventually find it.
+
+In the meanwhile, I will be happy and productive (and secure) using the
+third-party `requests` library, as the CPython developers themselves
+recommend.
+

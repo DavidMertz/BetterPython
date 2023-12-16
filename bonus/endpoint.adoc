@@ -1,0 +1,4 @@
+== Not including endpoint tests
+
+(for RESTful services)
+

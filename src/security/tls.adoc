@@ -1,0 +1,214 @@
+== Use SSL/TLS For Microservices
+
+Using Transport Layer Security is very important for communication over
+HTTP(S), but is often omitted during local development and/or with a false
+confidence that firewalls around locally connected server nodes suffices for
+security.
+
+Transport Layer Security (TLS) is a cryptographic protocol that provides
+communications security over a computer network. The protocol allows client/server
+applications to communicate in a way that is designed to prevent eavesdropping,
+tampering, or message forgery.  TLS supersedes the now-deprecated SSL (Secure
+Sockets Layer).
+
+A great deal of Python software is now written as "microservices," also often
+called "web service." The choice of name often, but not consistently, reflects
+how limited the functionality of a particular server is intended to be.  
+
+In a typical arrangement, a small number of endpoints are created using a
+RESTful web server
+(https://en.wikipedia.org/wiki/Representational_state_transfer).  Many such
+servers can run, and provide services to each other, with general independence
+from the particular hosting approach.  Very often cloud hosting providers
+(e.g. AWS, GCP, or Azure) and/or container orchestration systems (e.g. Docker
+Swarm or Kubernetes) are used in production, often with arrangements for
+demand scaling, load balancing, and other related capabilities.
+
+Typically, Python web services are written in Flask
+(https://flask.palletsprojects.com/) or FastAPI
+(https://fastapi.tiangolo.com/) which are both very lightweight, and
+more-or-less designed around microservices.  The heavy-weight web framework,
+Django, has a side project Django REST framework
+(https://www.django-rest-framework.org/) as well.
+
+As a toy example of a web service, I wrote this Flask application:
+
+.Source code of HelloServer.py
+[source,python]
+----
+# pip install flask[async]
+from flask import Flask
+
+app = Flask(__name__)
+
+@app.route("/")
+async def hello_world():                           # (1)
+    return "<p>Hello, World!</p>"
+----
+
+(1) To enable async routes, I installed with `pip install flask[async]`.
+
+When launched locally, in development mode, we see:
+
+[source,shell]
+----
+[code]$ flask --app HelloServer run
+ * Serving Flask app 'HelloServer'
+ * Debug mode: off
+WARNING: This is a development server. Do not use it in a production
+  deployment. Use a production WSGI server instead.
+ * Running on http://127.0.0.1:5000
+Press CTRL+C to quit
+----
+
+Read the Flask documentation for details on how to launch using a robust WSGI
+server.   You can also modify IP addresses and ports exposed.  The key point
+for this mistake is that we only published an `http://` route by launching
+this way.
+
+We can access the data this server provides from within the same _localhost_,
+e.g.:
+
+[source,python]
+----
+>>> import requests
+>>> resp = requests.get("http://127.0.0.1:5000")
+>>> resp.text
+'<p>Hello, World!</p>'
+----
+
+However, I am not entirely secure in the belief that this server might not be
+accessed externally via exposed ports on my system (or on the hosting Docker
+image, for example).  It  would be better only to provide the data from this
+server over an encrypted TLS channel.
+
+[IMPORTANT]
+.Transport layer security is *not* authentication
+====
+The discussion in this mistake describes the value and procedures for
+utilizing TLS/SSL.  Using this means that _channels_ are protected against
+eavesdroppers.
+
+However, in this example, no mechanism was created or described around using
+_authentication_ for access.  Anyone with access to the IP address and port
+used in examples can access the demonstration server.  If we also wanted to
+require credentials for access, that would be a separate discussion.  All the
+web servers we mention can certainly do that, but the specifics are not
+documented herein.
+====
+
+
+Obtaining and installing SSL certificates is a somewhat cumbersome task.  The
+availability of the community project _Let's Encrypt_
+(https://letsencrypt.org/) or commercial company _Cloudflare_'s free SSL/TLS,
+even on free accounts (https://www.cloudflare.com/ssl/) makes this somewhat
+easier.  However, your employer or project is likely to have its own
+certificate creation and distribution system which you should, obviously,
+follow for production.
+
+Fortunately, for local development and testing purposes, using _ad hoc_
+certficiates is very simple (but not ideal; we will improve that below).
+
+[source,shell]
+----
+[code]$ pip install pyopenssl
+# messages about installation progress
+[code]$ flask --app HelloServer run --cert=adhoc
+ * Serving Flask app 'HelloServer'
+ [...] 
+ * Running on https://127.0.0.1:5000
+Press CTRL+C to quit
+----
+
+At this point, no `http://` route has been created.  We can try connecting
+again, to both the TLS and the unencrypted channel:
+
+.Connecting to ad-hoc SSL certified route
+[source,python]
+----
+>>> import requests
+>>> resp = requests.get('https://127.0.0.1:5000', verify=False)
+InsecureRequestWarning: Unverified HTTPS request is being made 
+to host '127.0.0.1'. Adding certificate verification is strongly 
+advised. 
+>>> resp.text
+'<p>Hello, World!</p>'
+
+>>> try:
+...     resp = requests.get("http://127.0.0.1:5000", verify=False)
+... except Exception as err:
+...     print(err)
+...
+('Connection aborted.', 
+ ConnectionResetError(104, 'Connection reset by peer'))
+----
+
+The connection to the unencrypted route is simpy refused. The unverified
+certificate settles for a warning, but still provides its data.  However, it
+would be best to heed this warning.  Doing so is not difficult.  You will need
+`openssl` installed (https://www.openssl.org/).
+
+.Generating a self-signed cert and using it in microservice
+[source,shell]
+----
+[code]$ openssl req -x509 -newkey rsa:4096 -nodes \
+           -out cert.pem -keyout key.pem -days 365
+# ...shows key generation process...
+You are about to be asked to enter information that will be 
+incorporated into your certificate request.
+What you are about to enter is what is called a Distinguished 
+Name or a DN.
+There are quite a few fields but you can leave some blank
+For some fields there will be a default value,
+If you enter '.', the field will be left blank.
+-----
+Country Name (2 letter code) [AU]:US
+State or Province Name (full name) [Some-State]:Maine
+Locality Name (eg, city) []:
+Organization Name (eg, company) [Internet Widgits]:KDM Training
+Organizational Unit Name (eg, section) []:
+Common Name (e.g. server FQDN or YOUR name) []:localhost
+Email Address []:
+
+[code]$ % flask --app HelloServer run --cert=cert.pem --key=key.pem
+ * Serving Flask app 'HelloServer'
+ [...]
+ * Running on https://127.0.0.1:5000
+Press CTRL+C to quit
+----
+
+We are now able to connect to the local microservice, but only using the
+specific domain name "localhost" and by pointing to the correct `cert.pem`.
+We could have configured the FQDN as "127.0.0.1" instead if we wished, but
+using the symbolic name is generally recommended practice.
+
+.Connecting to generated self-signed certificate
+[source,python]
+----
+>>> resp = requests.get('https://localhost:5000', 
+...                     verify="code/cert.pem")
+>>> resp.text
+'<p>Hello, World!</p>'
+>>> try:
+...     resp = requests.get("http://localhost:5000", 
+...                         verify="code/other-cert.pem")
+... except Exception as err:
+...     print(err)
+...
+('Connection aborted.', 
+ ConnectionResetError(104, 'Connection reset by peer'))
+>>> try:
+...     resp = requests.get("http://127.0.0.1:5000", 
+...                         verify="code/cert.pem")
+... except Exception as err:
+...     print(err)
+...
+('Connection aborted.', 
+ ConnectionResetError(104, 'Connection reset by peer'))
+----
+
+In the example, `code/other-cert.pem` is an actual valid (signed) certificate
+for an unrelated domain which I copied into that directory (and renamed). The
+error message shown above, unfortunately, would be the same if I had pointed
+to a file that did not exist (but some details in the full error object would
+differ).

@@ -1,0 +1,175 @@
+== Use A Context Manager To Open A File
+
+Context managers are an important mechanism for managing resource that require
+cleanup.  The most common example of this is opening files.  
+
+In the very ancient days of Python, context managers did not exist, and it was
+the responsibility of programmers to explicitly close files when they were
+done working with them.  Many developers—out of haste, because a script is a
+"one off", or under the assumption it "won't matter"—still sometime approach
+file handling this way.  I am myself guilty of this bad habit, and have
+probably done it more recently than I would like to admit.
+
+In such a quick-and-dirty approach, I have written many scripts similar to:
+
+.Source code of `code/wordcount`
+[source,python]
+----
+#!/usr/bin/env python
+import os
+
+n_words = 0
+for root, dir_, files in os.walk("src"):
+    for name in files:
+        if name.endswith(".adoc"):
+            filepath = os.path.join(root, name)
+            fh = open(filepath)
+            n_words += len(fh.read().split())
+
+print(f"Total words in book draft: {n_words:,}")
+----
+
+With this script, which I wrote just a few minutes ago, I can check my
+progress in writing this book.  The many smaller files in nested directories
+that make up the book are written in a textual format called AsciiDoc (which
+is similar to reStructuredText or Markdown, the only important focus here is
+that it's basically just text files).
+
+[source,shell]
+----
+[BetterPython]$ code/wordcount
+Total words in book draft: 65,376
+----
+
+As a word-count algorithm it's fairly crude.  More relevantly for this
+discussion, I have relied solely on implicit garbage collection by Python.
+This will _probably_ work fine for this limited purpose.  The reference count
+on the open file object will drop to zero when `fh` is repeatedly rebound, and
+the +++<code>.__del__()</code>+++ method of the `TextIOWrapper` object (which
+`fh` is an instance of) will be called during this cleanup, closing the file.
+
+This reasoning can quickly become less clear in more complex programs,
+however, especially ones that utilize concurrency.  At least two dangers,
+explained below, exist when files might not be closed because neither does
+flow control actually arrive at a call to `fh.close()` nor does scoping or
+program termination succeed in forcing garbage collection.  Flow control can
+fail because `if`/`elif`/`else` branches are not fully analyzed, or similarly
+for `match`/`case` (in Python 3.10+), but most often because uncaught
+exceptions are raised that prevent a program reaching the explicit
+`fh.close()` and dangling file handles stay around.
+
+=== First Danger
+
+The first danger is encountering the file handle limit your operating system
+imposes.
+
+.Operating system file handle limit
+[source,python]
+----
+>>> files = [open(f"tmp-{n:04d}.txt", mode="w") for n in range(10_000)]
+Traceback (most recent call last):
+[...]
+OSError: [Errno 24] Too many open files: 'tmp-1011.txt'
+
+>>> from glob import glob
+>>> sorted(glob("tmp-*.txt"))[-4:]
+['tmp-1007.txt', 'tmp-1008.txt', 'tmp-1009.txt', 'tmp-1010.txt']
+----
+
+Considerably fewer that 10,000 files were created.  We could, in concept,
+adjust the specific number using `resource.setrlimit()`, but at some point we
+will hit limits of the operating system itself; moreover, increasing it will
+cause lag in other operations the computer is performing.  Trying to open ten
+thousand temporary files at once is simply not a good idea.  Rather, we should
+take an approach that uses only a few files at a time, and reopens them when
+needed rather than in advance.
+
+.Safe use of many temporary files
+[source,python]
+----
+# If filenames are completely reproducible from index, then
+# pregenerating them in a list is not needed.  Suppose the names
+# are created by more complex procedure than simple numbering
+filenames = [f"tmp-{n:04d}.txt" for n in range(10_000)]
+
+while (index := more_work_needed()) is not None:
+    if not 0 <= index <= 9999:
+        raise IndexError(f"Cannot access temporary file {index}")
+    with open(filenames[index], mode="a") as tmpfile:  # (1)
+        data = get_information_to_store()              # (2)
+        tmpfile.write(data)
+----
+
+(1) Under presumption the same index is repeated, append mode is likely better.
+
+(2) As in other sections, a sample implementation of this function is at
+https://gnosis.cx/better; any function that returns varying strings is
+equally illustrative.
+
+=== Second Danger
+
+The second danger is that failure to close an open file may leave some queued
+changes unwritten to disk.  In fact, even the permissions or existence of an
+unclosed file could be messed up.  Again, using a context manager assures
+safety around this.
+
+.Unsafe open file in `code/crash.py`
+[source,python]
+----
+import os
+fh = open("crash.txt", mode="w")
+fh.write("Hello, world!\n")
+fh.flush()
+fh.write("Goodbye!\n")
+os._exit(1)
+fh.close()
+----
+
+Obviously this program is a toy example.  Notice, however, that it _has_ a
+`.close()` method call included (which is not reached).
+
+[source,shell]
+----
+[BetterPython]$ python code/crash.py        # (1)
+[BetterPython]$ cat crash.txt                # (2)
+Hello, world!
+----
+
+(1) Run the program.
+
+(2) Show the full output generated within `crash.txt`.
+
+=== Correcting The Fragility
+
+Simply be enclosing every `open()` within a context manager, the dangers are
+mitigated.
+
+.Safe open file in `code/safe-crash.py`
+[source,python]
+----
+import os
+with open("crash.txt", mode="w") as fh:
+    fh.write("Hello, world!\n")
+    fh.write("Goodbye!\n")
+os._exit(1)
+----
+
+Admittedly, a genuine system-level crash such as simulated by `os._exit()` will
+interfere with flushing unclosed files.  That is, if the crash occurred between
+the "Hello" and "Goodbye" writes, we still wouldn't get all the data to disk.
+But keeping writes inside the `with` block at least minimizes the exposure to
+that danger.
+
+[source,shell]
+----
+[BetterPython]$ python code/safe-crash.py
+[BetterPython]$ cat crash.txt
+Hello, world!
+Goodbye!
+----
+
+Done correctly, all the `fh.write()` lines produce output to `crash.txt`.  You
+can read more about writing your own context managers at
+https://docs.python.org/3/reference/datamodel.html#context-managers.  The
+excellent description in the Python documentation describes the "guts" of
+how context managers work internally.

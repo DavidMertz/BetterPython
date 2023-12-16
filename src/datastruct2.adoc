@@ -1,0 +1,54 @@
+:chapter: 7
+:sectnums:
+:figure-number: 0
+:figure-caption: Figure {chapter}.
+:listing-caption!:
+:table-caption: Table {chapter}.
+:sectnumoffset: 0
+:leveloffset: 1
+
+= Misusing Data Structures
+
+Python has extremely well designed data structures and data representations,
+many of which are discussed in the prior chapter.  However, a few
+anti-patterns, that are unfortunately common, can make the use of data
+structures dramatically inefficient or lead to unintended behavior in your
+code.
+
+include::datastruct2/list-quad.adoc[leveloffset=+0]
+include::datastruct2/list-middle.adoc[leveloffset=+0]
+include::datastruct2/stringstrings.adoc[leveloffset=+0]
+include::datastruct2/enum.adoc[leveloffset=+0]
+include::datastruct2/setdefault.adoc[leveloffset=+0]
+include::datastruct2/json.adoc[leveloffset=+0]
+include::datastruct2/data-roll.adoc[leveloffset=+0]
+
+== Wrapping Up
+
+Sometimes a powerful object method or general technique can also lead you in
+the wrong direction, even in seemingly ordinary uses.  This wrong direction
+might cause bad complexity behavior; at times it might work for initial cases
+but then fail in cases you had not yet considered.
+
+In this chapter we probed at some operations on lists—generally one of the
+best optimized and flexible data structures Python has—where a different data
+structure is simply better.  We also looked at how recursive algorithms need
+to remember that strings are both scalar and iterable, which means they often
+need to be special cased in program flow.
+
+Two more mistakes in this chapter looked at "sins of omission" where a
+facility that may be less familiar provides a more convenient and more
+readable approach to common tasks.  Specifically, two mistakes served as
+reminders of the `enum` module and of some of the less widely used methods of
+dictionaries.
+
+In the penultimate mistake of this chapter, the capabilities and limitations
+of the widely used JSON format were explored. In particular, we saw how Python
+developers might forget the (relatively minor) lossiness of JSON
+representations of data.
+
+The final mistake discussed is one of nuance and complex decision making.
+Often creating custom data structures is premature optimization; but at other
+times they can significantly improve your code.  The (long) discussion
+provides some guidance about making this choice wisely.
+

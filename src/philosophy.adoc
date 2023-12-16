@@ -1,0 +1,76 @@
+:chapter: 5
+:sectnums:
+:figure-number: 0
+:figure-caption: Figure {chapter}.
+:listing-caption!:
+:table-caption: Table {chapter}.
+:sectnumoffset: 0
+:leveloffset: 1
+
+= Just Because You Can, It Doesn't Mean You Should...
+
+Python has a great many capabilities that exist for good reasons.  However,
+many of these features create what jurists call an "attractive
+nuisance."footnote:[Attractive nuisance: "a legal doctrine which makes a
+person negligent for leaving a piece of equipment or other condition on
+property which would be both attractive and dangerous to curious children.
+These have included tractors, unguarded swimming pools, open pits, and
+abandoned refrigerators" (from https://dictionary.law.com).  Some of the more
+obscure features in Python are certainly reminiscent of open pits and
+abandoned refrigerators.]  This chapter is a mixture of positive and negative
+advice, in truth.  It presents some slightly unusual constructs that a new
+Python developer often learns and becomes excited about, before finally
+stumbling over the pitfalls those possibilities present.  Hopefully, reading
+the mistakes here will faciliate the learning part, but discourage the misuse
+followup.  In some other mistakes, I simply discuss some techniques that
+people new to Python may not have known about (but which are mistakes not to
+avail yourself of); in one case (and another half case), people who have long
+used Python may also not be familiar with a newer feature.
+
+include::philosophy/metaclass.adoc[leveloffset=+0]
+include::philosophy/monkey.adoc[leveloffset=+0]
+include::philosophy/getters.adoc[leveloffset=+0]
+include::philosophy/forgive.adoc[leveloffset=+0]
+include::philosophy/match.adoc[leveloffset=+0]
+include::philosophy/catastrophe.adoc[leveloffset=+0]
+
+== Wrapping Up
+
+There is heterogeneity in the mistakes of this chapter.  Python allows and
+enables you to do a great many things, even some that are generally unwise.
+Some of these techniques are particularly tempting to _advanced_ Python
+programmers, or at least those on the edge of being advanced; these are not
+generally beginners' mistakes.  Give someone a new hammer, and every problem
+starts to look like a thumb.
+
+The ability to utilize metaclasses is certainly an advanced feature.
+Moreover, it is even an advanced feature that has dedicated syntax rather than
+simply emerging from the object model of Python _accidentally_.  In contrast,
+monkeypatching is a somewhat advanced capability, but one that more-or-less
+follows automatically from what it means to be an object in Python.  In that
+case, the capability exists mostly because Python's developers did not take
+large efforts to prevent it more than because they designed the language _for_
+it.  Either way, either of these techniques should be used rarely, at most.
+
+Writing getters and setters is not an especially advanced technique.  They are
+rather ordinary methods.  But the habit of using them is almost always the
+result of vestiges of other languages carrying over to the detriment of
+idiomatic Python.  Properties, or just direct attribute access, are always
+more clear and more beautiful. To some degree, the same can be can be said of
+the choice between LBYL versus EAFP coding styles.  I will confess that an
+attitude characterized by an old saying, "exceptions are not that
+exceptional," is not as clear a consensus among experienced Pythonistas as I
+think it should be.  While I fall on one side of a possible divide, there are
+a great many situations where checking _everything_ in advance is infeasible
+and fragile, and both local and outer-scope exception handling are essential.
+
+The remaining mistakes here are first one of not taking advantage of a feature
+new to Python 3.10.  Structural pattern matching with `match` and `case` is
+concise and expressive, and very often now just much more clear in expression
+of intent.  It's often a little bit faster than walls of `elif` clauses.  The
+final mistake about backtracking in regular expressions is just tricky.  Using
+regular expressions wisely, but moderately, is extremely powerful; not being
+aware of when they become dramatically slower is a lurking danger, but not one
+with a simple and categorical solution.  The mistake discussion gives pointers
+on what to be conscious of when creating this potential hazard.
+ 

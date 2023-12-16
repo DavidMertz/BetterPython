@@ -1,0 +1,83 @@
+:chapter: 6
+:sectnums:
+:figure-number: 0
+:table-number: 0
+:figure-caption: Figure {chapter}.
+:listing-caption!:
+:table-caption: Table {chapter}.
+:sectnumoffset: 0
+:leveloffset: 1
+
+= Picking The Right Data Structure
+
+This chapter hopes to save its readers from unecessarily difficult code by
+drawing attention to a number of useful data structures that Python beginners,
+and even many advanced language users, may be unaware of or merely tend to
+forget.  Four of these data structures are contained in the Python standard
+library, in `collections`, and another is in `dataclasses` (sort of—we'll
+discuss that). The last mistake discussed looks at several additional, closely
+related, sequence (i.e. +++<code>list</code>+++-like) data structures that
+can sometimes be more efficient than lists.  These are all built-ins or in 
+standard library modules.
+
+The longest mistake discussion of this book comes in the later chapter 7,
+_Misusing Data Structures_, in the section "Rolling your own data
+structures."  That more advanced mistake goes into a great many pros and cons
+of creating custom data structures. Until you've _considered_ all the standard
+library collections discussed in this chapter, and also the third-party
+libraries _sortedcontainers_ (https://grantjenks.com/docs/sortedcontainers/),
+and _pyrsistent_ (https://pyrsistent.readthedocs.io/en/latest/), you are most
+certainly premature in creating your own custom data structures.
+
+Some of the discussions in this chapter—each about one particular data
+structure available in the Python standard library—are arranged a bit
+differently than other other sections in this book.  For each of them, a simple
+task using one of these simple data structures is shown; following that is the
+_mistake_ represented by the longer, less readable, and sometimes notably
+slower, code that would be needed to achieve the same goal without these data
+structures.
+
+include::datastruct/defaultdict.adoc[leveloffset=+0]
+include::datastruct/counter.adoc[leveloffset=+0]
+include::datastruct/deque.adoc[leveloffset=+0]
+include::datastruct/chainmap.adoc[leveloffset=+0]
+include::datastruct/dataclass.adoc[leveloffset=+0]
+include::datastruct/efficient.adoc[leveloffset=+0]
+
+== Wrapping Up
+
+[quote,Linus Torvalds,Creator of Linux]
+I will, in fact, claim that the difference between a bad programmer and a good
+one is whether he considers his code or his data structures more important.
+Bad programmers worry about the code. Good programmers worry about data
+structures and their relationships.
+
+Choosing a data structure well suited to your tasks is one of the most
+important tasks in programming.  Python provides both ubiquitously used data
+structures—mainly `dict`, `list`, `tuple`, and `set` built-in types—and some
+others that are more often overlooked.  Many of these overlooked gems live
+inside the `collections` module of the standard library.  A few live in other
+modules, or simply as less used built-ins.
+
+On the Python Package Index (https://pypi.org/) you can probably find hundreds
+of very specialized data structure modules.  There are definitely times when
+one of these is exactly what you need; however, much of what lives on PyPI is
+somewhat preliminary or partial, being the hobby of one or a few programmers.
+The libraries _sortedcontainers_ and _pyrsistent_ mentioned in the
+introduction to this chapter are definitely worth being aware of.  I've found
+specific use for _pygtrie_ (https://pypi.org/project/pygtrie/) and Rtree
+(https://pypi.org/project/Rtree/) as well, for example.  
+
+A good strategy when choosing a data structure for your project is to first
+think about whether any of the "big four" listed above accomplish exactly what
+you need (including good big-O behavior).  Very often the answer is yes.  If
+you feel like there may be drawbacks to using those, consider using one of the
+other data structures in standard library `collections`, `array`, `enum`,
+`dataclasses`, or perhaps `queue` and a few others.  If something still feels
+missing, think about _sortedcontainers_, _pyrsistent_, _NumPy_, and _Pandas_.
+If that still falls short—and if it does, think very carefully about whether
+you are genuinely asking the right questions—look for other data structure
+projects in the open source world.  And in the rare, but not nonexistent,
+circumstance those earlier steps don't satisfy your needs, think about
+creating custom data structures (after reading the next chapter).
+

@@ -1,0 +1,26 @@
+= Basic Concurrency Abstractions
+
+== This chapter covers
+
+* mistake 1
+* mistake 2
+
+'''
+
+The nature of these mistakes....
+
+include::concurrency/gil-problems.adoc[leveloffset=+0]
+include::concurrency/gil-workwith.adoc[leveloffset=+0]
+include::concurrency/multiproc-good.adoc[leveloffset=+0]
+include::concurrency/thread-good.adoc[leveloffset=+0]
+include::concurrency/async-good.adoc[leveloffset=+0]
+include::concurrency/root-of-evil.adoc[leveloffset=+0]
+
+== Wrapping Up
+
+Rambling thoughts about what the moral of this chapter is...
+
+== Summary
+
+* This thing.
+* That thing.

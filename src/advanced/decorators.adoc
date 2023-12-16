@@ -1,0 +1,364 @@
+== The Elegant Magic Of Decorators
+
+As with the one prior and following two discussions, the problem discussed
+here is a sin of omission rather than a sin of commission.  There is nothing
+you can do with decorators that you cannot do without them; yet they
+nonetheless very often improve the quality and readability of code.
+
+[NOTE]
+.The literalness of "nothing more"
+====
+In commenting that decorators are _stricto sensu_ never required, I mean that
+even more literally than I do of other convenient features one _could_ do
+without.  For any decorator you use, you could rewrite it with a small and
+mechanical translation into code that was decorator free.
+
+.Use of decorator
+[source,python]
+----
+@some_decorator
+def my_function(this, that):
+    # do some stuff
+    return a_value
+----
+
+With _exactly_ the same semantics, and yet drawing attention to the meaning less
+well, we could write:
+
+.Rewriting without a decorator
+[source,python]
+----
+def my_function(this, that):
+    # do some stuff
+    return a_value
+
+my_function = some_decorator(my_function)
+----
+
+This equivalence fully explains precisely what a decorator actually does.  It
+is nothing more, and nothing less, than rebinding a name that was used in
+defining a function (or a class) to some new object based on taking the
+original function (or class) as an argument and returning the transformed
+version.  
+====
+
+The value of decorators is often to give Python a kind of _aspect oriented
+programming_ (https://en.wikipedia.org/wiki/Cross-cutting_concern) in which a
+common behavior can be "injected" into many functions or classes without
+needing to put a shared aspect of their functionality separately into the
+bodies of those functions.
+
+In a sense, you can think of a function as performing a specific task, but a
+decorator (aspect) as re-casting the means by which many functions go about
+peforming their respective tasks.  Within a very object-oriented way of
+thinking, using base classes or mixins can be used to give different objects a
+common behavior.  More often than not, using a decorator to give functions
+such a common behavior is more concise, more readable, and much less fragile
+than OOP designs.
+
+As well, a number of decorators are built into Python itself or available
+within standard library modules (particularly `functools`).  Only a couple of
+these relate to cross-cutting concerns, but rather each perform some special
+configuration of functions, classes, or methods within classes, that is most
+elegantly expressed as a prefix to the definition that follows.
+
+This discussion of is divided into subsections, first looking at how to write
+useful decorators yourself—particularly _aspect oriented_ ones—then looking at
+some of the most common and useful "standard" decorators.  Both elements are
+worth knowing about and your code will be worse for not availing yourself of
+these opportunities where relevant.
+
+=== Writing Decorators
+
+In general, a decorator is simply a function that takes one other function as
+an argument and returns _something_.  Within Python semantics, that something
+_could be_ any Python object.  However, in almost all cases, useful decorators
+for functions and methods almost always return a callable.  Moreover, this
+callable almost always has the same, or almost the same, calling signature as
+the decorated function or method. Useful decorators for classes return new
+classes, but ones that serve a closely related purpose to the class directly
+in the code—merely "tweaked" or "enhanced" in some respect.
+
+Very simple good and bad examples are shown below, but read a bit later to
+understand a better way to write even the "good" decorator.
+
+.(Pretty) good and bad decorators
+[source,python]
+----
+>>> def bad_decorator(fn):                         # (1)
+...     return 42
+...
+>>> @bad_decorator
+... def fused_multiply_add(a, b, c):
+...     return (a * b) + c
+...
+>>> fused_multiply_add(4, 7, 3)
+Traceback (most recent call last):
+[...]
+TypeError: 'int' object is not callable
+
+>>> import sys
+>>> def ok_decorator(fn):
+...     def inner(*args, **kws):
+...         print(f"Calling {fn.__name__}{args}", file=sys.stderr)
+...         return fn(*args, **kws)
+...     return inner
+...
+>>> @ok_decorator
+... def fused_multiply_add(a, b, c):
+...     return (a * b) + c
+...
+>>> fused_multiply_add(4, 7, 3)
+Calling fused_multiply_add(4, 7, 3)                # (2)
+31
+>>> fused_multiply_add.__name__                    # (3)
+'inner'
+----
+
+(1) A kind phrase used to describe this decorator is "abuse of notation."
+
+(2) This injected, cross-cutting, behavior is "pretty good."
+
+(3) Losing details of introspection is less good, but curable.
+
+[NOTE]
+.Decorators and decorator factories
+====
+There is an often glossed-over distinction between _decorators_ and _decorator
+factories_.  In much of what you will read, even within the official Python
+documentation itself, this is not kept clear.
+
+An actual decorator takes a function (or method or class) and returns a
+modified version.  However, many very common and useful "decorators" are
+actually parameterized "decorator factories."  That is, these factories take
+completely different arguments, and themselves _return a decorator_.  In fact,
+many useful "decorators" are cleverly configured to act in both of these roles
+(probably adding to the confusion of nomenclature but making the functions
+themselves more useful).
+
+For example, the excellent standard library `lru_cache` provides this dual
+functionality:
+
+[source,python]
+----
+>>> def mandelbrot(z0:complex, orbits:int=255) -> int: # (1)
+...     z = z0
+...     for n in range(orbits):
+...         if abs(z) > 2.0:
+...             return n
+...         z = z * z + z0
+>>> %timeit mandelbrot(0.0965-0.638j)                  # (2)
+1.7 µs ± 6.82 ns per loop (mean ± std. dev. of 7 runs, 1,000,000 
+  loops each)
+
+>>> from functools import lru_cache
+>>> @lru_cache
+... def mandelbrot(z0, orbits=255):
+...     z = z0
+...     for n in range(orbits):
+...         if abs(z) > 2.0:
+...             return n
+...         z = z * z + z0
+...
+>>> %timeit mandelbrot(0.0965-0.638j)                  # (3)
+91.8 ns ± 0.507 ns per loop (mean ± std. dev. of 7 runs, 10,000,000 
+  loops each)
+
+>>> @lru_cache(maxsize=50, typed=True)                 # (4)
+... def mandelbrot(z0, orbits=255):
+...     z = z0
+...     for n in range(orbits):
+...         if abs(z) > 2.0:
+...             return n
+...         z = z * z + z0
+----
+
+(1) Type annotations only for documentation; no effect on behavior.
+
+(2) Undecorated `mandelbrot()` is fast-ish for one point and 255 iterations.
+
+(3) Since `%timeit` makes many calls, almost all are cached and faster.
+
+(4) Decorator factory changes details of `@lru_cache` behavior.
+====
+
+Let's write two reasonably good decorators that express cross-cutting
+concerns.  In the process we will use a very nice decorator factory that is
+included in Python's standard library.
+
+.A vectorization decorator
+[source,python]
+----
+>>> from functools import wraps
+>>> from collections.abc import Sequence
+>>> def vectorize(fn):
+...     @wraps(fn)                                 # (1)
+...     def inner(*args):
+...         if len(args) > 1:                      # (2)
+...             return fn(*args)
+...         elif isinstance(args[0], Sequence):
+...             return [fn(*a) for a in args[0]]
+...         else:                                  # (3)
+...             raise ValueError(
+...                 "Requires original arguments or "
+                    "sequence of tuples")
+...     return inner
+...
+>>> @vectorize
+... def fused_multiply_add(a, b, c):
+...     "Multiply and accumulate"
+...     return (a * b) + c
+...
+>>> fused_multiply_add(4, 7, 3)
+31
+>>> fused_multiply_add([(4, 7, 3), (7, 2, 4), (12, 1, 5)])
+[31, 18, 17]
+
+>>> fused_multiply_add.__name__
+'fused_multiply_add'
+>>> fused_multiply_add?                            # (4)
+Signature: fused_multiply_add(a, b, c)
+Docstring: Multiply and accumulate
+File:      ~/git/PythonFoibles/...
+Type:      function
+
+----
+
+(1) A handy _decorator factory_ that helps preserve function signatures.
+
+(2) We _do_ assume that the original function takes two or more args.
+
+(3) Will break on vectorizing a function that already takes one sequence.
+
+(4) All the function attributes are preserved by using `@wraps(fn)`.
+
+The big win of this decorator is that we are completely free to reuse it on
+*any* function that takes multiple arguments without having to rewrite the
+conditional logic about whether to vectorize inside each of them.  Every
+function we decorate can focus solely on the numeric (or other) operation it
+needs to perform and leave the "vectorized" aspect to the decorator.
+
+Of course, NumPy "ufuncs" (https://numpy.org/doc/stable/reference/ufuncs.html)
+do this same thing for sequences that are specifically NumPy arrays, with a
+more optimized implementation for that case.  But this version works for _any_
+Python sequence that might be operated on in a vectorized manner.
+
+In a similar spirit, suppose that we want to keep track of how often a function
+is called.
+
+.Counting calls to a function
+[source,python]
+----
+>>> def count_calls(fn):
+...     @wraps(fn)
+...     def inner(*args):
+...         inner.num_calls += 1
+...         return fn(*args)
+...     inner.num_calls = 0
+...     return inner
+...
+>>> @count_calls
+... def fused_multiply_add(a, b, c):
+...     return (a * b) + c
+...
+>>> [fused_multiply_add(*args)
+...     for args in [(4, 7, 3), (7, 2, 4), (12, 1, 5)]]
+[31, 18, 17]
+>>> fused_multiply_add.num_calls
+3
+>>> fused_multiply_add(7, 6, 5)
+47
+>>> fused_multiply_add.num_calls
+4
+----
+
+Python functions are perfectly free to have additional attributes attached to
+them, and that serves us well for keeping state associated with the runtime
+use of the function.
+
+=== Standard Decorators
+
+The Python standard library includes a number of very useful decorators.  The
+previous section touched on using `@property` which is a name in
++++<code>__builtins__</code>+++.  The decorators `@staticmethod` and
+`@classmethod` are similar as ways of modifying the behavior of methods within
+a class.
+
+Early in this discussion, we already had a chance to see how
+`@functools.lru_cache` can speed up pure functions (ones that should always
+return the same answer given the same arguments).  An interesting standard
+library decorator is `@dataclasses.dataclass` which can "enhance" the behavior
+of a class used primarily to store "records."  Dataclasses are discussed in
+the _Picking the Right Data Structure_ chapter.
+
+Similar to `@functools.lru_cache` is `@functools.cache`, which was added in
+Python 3.9.  It is simply an unbounded variation of "least-recently-used"
+(LRU) caching.  There are tradeoffs between the two, unbounded caching can be
+faster, but can also increase memory usage indefinitely.
+
+A very interesting decorator for a class is `functools.total_ordering`.  If we
+wish for instances of a custom class to be sortable and support inequality and
+equality comparisons, we need to implement +++<code>.__lt__()</code>+++,
++++<code>.__le__()</code>+++, +++<code>.__gt__()</code>+++, or
++++<code>.__ge__()</code>+++, and +++<code>.__eq__()</code>+++.  That's a lot
+of work that can be made easier using a decorator.
+
+.Comparable persons
+[source,python]
+----
+>>> import random
+>>> from functools import total_ordering, cached_property
+>>> @total_ordering
+... class Person:
+...     def __init__(self, firstname, lastname):
+...         self.firstname = firstname
+...         self.lastname = lastname
+...
+...     def __eq__(self, other):                   # (1)
+...         return (self.firstname == other.firstname and
+...                 self.lastname == other.lastname)
+...
+...     def __gt__(self, other):                   # (1)
+...         return ((self.lastname, self.firstname) >
+...                 (other.lastname, other.firstname))
+...
+...     @cached_property                           # (2)
+...     def lucky_number(self):
+...         print(f"Generating for {self.firstname} {self.lastname}")
+...         return random.randint(1, 100)
+...
+>>> person1 = Person("David", "Mertz")
+>>> person2 = Person("Guido", "van Rossum")
+>>> person3 = Person("Grace", "Hopper")
+>>> person1 <= person3                             # (3)
+False
+
+>>> person1.lucky_number
+Generating for David Mertz
+88
+>>> person1.lucky_number                           # (4)
+88
+>>> person2.lucky_number
+Generating for Guido van Rossum
+17
+>>> person2.lucky_number                           # (4)
+17
+----
+
+(1) Any two of the comparison dunders may be implemented for the rest to be
+built for us.
+
+(2) This property is only calculated once then cached.
+
+(3) A comparison, +++<code>.__le__()</code>+++ we did not directly implement.
+
+(4) Second access has no side effect, nor does it call `randint()` again.
+
+'''
+
+There are a good number of additional useful decorators scattered around
+Python's standard library, and many libraries and frameworks supply their own.
+Much of the time, use of decorators provides a clean, minimal, and expressive
+way of creating code without explicitly writing it.  As most things,
+decorators have their abuses; well used they make code even more Pythonic.
+

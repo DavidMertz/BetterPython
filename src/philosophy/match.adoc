@@ -1,0 +1,111 @@
+== Structural Pattern Matching
+
+Like a number of other sections of this book, this is a discussion of a sin
+of omission rather than a sin of commission.  For a great many years before
+PEPs 384, 385, and 386 which introduced structural pattern matching to Python
+3.10, beautiful and Pythonic code was written without this new-ish feature
+being available.  In the chapter on _Looping over the Wrong Things_, the
+discussion of the walrus operator (introduced in Python 3.8) similarly showed
+examples where code can simply be _better_ by using newer constructs.
+
+In the spirit of this chapter's title, you _could_ use `if`, `elif` and `else`
+statements to express everything that the `match` / `case` statements do.
+Indeed, `if` is certainly not going away, and it will remain the preferred
+pattern for a great many purposes.  Let's look at a brief example where the
+structural pattern matching makes code more readable and shorter.  For this,
+we will analyze some responses from the `requests` library (whose virtues are
+discussed in the chapter _Security_).
+
+.Unpacking a response object
+[source,python]
+----
+from requests.models import Response
+def process_resp(resp):
+    match resp:
+        case Response(status_code=200, headers=headers) \
+                if "json" in headers['Content-Type']:
+            print("Received JSON response")
+            match resp.json():
+                case [*args]:
+                    print(f" -> {', '.join(args[:5])}, ...")
+                case {**kws}:
+                    print(f" -> {', '.join(kws.keys())}, ...")
+                case str() as json:
+                    print(f" -> {json[:30]}...")
+        case Response(status_code=200, text=text):
+            print(f"Received {len(text.splitlines())} lines")
+        case Response(status_code=404, text=text):
+            print(f"Not Found with message {text.splitlines()[0]}...")
+        case Response(status_code=status_code):
+            print(f"Received status code {status_code}")
+        case _:
+            print("'Response' has no status code (wrong type?)")
+----
+
+It's easy enough to use this function, for example:
+
+[source,python]
+----
+>>> import requests
+>>> # Substitute some URL component path for RESOURCE below
+>>> resp = requests.get("https://gnosis.cx/better/RESOURCE")
+>>> process_resp(resp)                             # (1)
+----
+
+(1) Something will be printed here, depending on the response.
+
+If you are not familiar with the syntax, it can be somewhat surprising.  When
+we name the `Response` class and provide what looks like initialization
+parameters, we are actually _either_ checking values _or_ binding names within
+the nested block.  For example, in the first clause,
+`Response(status_code=200, headers=headers)` we first check whether the
+matched `resp` object has `resp.status_code == 200` then if that holds, bind
+`headers` to `resp.headers` within the block.
+
+In the first case, we need to check additional features of the matched `resp`,
+which we can do with an extra `if` clause.  If that case does not hold,
+including the `if` clause, then Python checks the next case, and if it is
+nonetheless a 200 status code, binds `text` to `resp.text`.  Following that,
+we consider 404 codes in a similar manner.  If the first cases are not
+matched, we generically look for whatever status code was available; but we
+also fall back to a default case if the "response" lacks any status code at
+all.
+
+Within the case that contains JSON data, we use another `match` against the
+actual type of the deserialized JSON.  It might be either a JSON array (i.e.
+Python `list`) or JSON object (i.e. Python `dict`).  We match that by
+providing templates for what a list or dictionary looks like, capturing the
+contents as names `args` or `kws`.  In the case a JSON string is the data, we
+can use the `as` clause to bind that to a name in the block scope (yes, this
+is strange that the empty string matches all strings; but it's convenient).
+
+Let's see the function in use:
+
+[source,python]
+----
+>>> import requests
+>>> basename = "https://gnosis.cx/better/data"
+>>> process_resp(requests.get(f"{basename}/sowpods"))
+Received 267752 lines
+>>> process_resp(requests.get(f"{basename}/sowpods.json"))
+Received JSON response
+ -> aa, aah, aahed, aahing, aahs, ...
+>>> process_resp(requests.get(f"{basename}/sowpods.NOT_FOUND"))
+Not Found with message <!DOCTYPE html>...
+>>> process_resp(requests.get('http://localhost/unauthorized'))
+Received status code 401                           # (1)
+>>> process_resp(42)
+'Response' has no status code (wrong type?)
+----
+
+(1) I created a local server and route to return a 401.
+
+You *could*, of course, write equivalent code to the above using only
+`if`-style switching.  I leave it as an exercise for readers to actually write
+such code.  You will most certainly find that such a version is considerably
+longer, more nested, and littered with `isinstance()` checks and assignments
+to temporary variables within blocks.
+
+Per the _Zen of Python_, Beautiful is better than ugly.  It's a mistake to
+choose the latter.
+

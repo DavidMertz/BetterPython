@@ -1,0 +1,100 @@
+:chapter: 9
+:sectnums:
+:figure-number: 0
+:figure-caption: Figure {chapter}.
+:listing-caption!:
+:table-caption: Table {chapter}.
+:sectnumoffset: 0
+:leveloffset: 1
+
+= Numeric Computation In Python
+
+Working with numbers is, of course, one of the most common things we do in
+programming languages.  And yet, there are a great many ways that our numeric
+code can go subtly wrong.  For larger scale and more intensive work with
+numbers, the third-party libraries NumPy and Pandas make a great many tasks
+easier and faster.  Other important numeric libraries also exist, but those
+two are so widespread in the Python ecosystem as to merit independent
+discussion. Several such libraries are discussed briefly the appendix, _Topics
+for Other Books_.
+
+While reaching out to "vectorized" or "unboxed" numeric libraries can often be
+useful,footnote:[Wikipedia's articles on vectorization
+(https://en.wikipedia.org/wiki/Array_programming) and numeric boxing
+(https://en.wikipedia.org/wiki/Boxing_(computer_science)) are good starting
+points for understanding these computer programming topics.] we should and do
+perform much numeric computation in Python itself.
+
+Many of the mistakes we can make in working with numbers derive from subtle
+edge cases of the behavior of floating point numbers.  In a general way, this
+class of issues applies just as much to the third-party libraries as it does
+to pure-Python.  In fact, three of the four mistakes discussed in the IEEE-754
+section of this chapter apply almost identically to most programming languages
+other than Python, but remain concerns for Python developers, so are discussed
+here.
+
+Some mistakes Python developers can make relate to other kinds of _numeric
+domains_, perhaps with choosing the wrong one for a given task.  The last two
+mistakes in this chapter touch on `decimal.Decimal` and `fractions.Fraction`
+and when those are good choices for numeric types.
+
+== Understanding IEEE-754 Floating Point Numbers
+
+Had he lived 75 years later, J. B. S. Haldane likely would have remarked:
+
+> Now, my own suspicion is that IEEE-754 is not only queerer than we suppose,
+> but queerer than we can suppose ... I suspect that there are more things 
+> in numeric approximation than are dreamed of, or can be dreamed of, in any 
+> philosophy.
+
+This section looks at several common mistakes Python programmers make when
+working with floating point numbers, which often occur in places that are
+unlikely to raise immediate suspicion among developers who have not yet been
+bitten by them.
+
+include::numeric/fp01.adoc[leveloffset=+1]
+include::numeric/fp02.adoc[leveloffset=+1]
+include::numeric/fp03.adoc[leveloffset=+1]
+include::numeric/fp04.adoc[leveloffset=+1]
+
+'''
+
+Floating point numbers are both ubiquitous and enormously useful as
+approximations of Real numbers from mathematics.  However, since finite
+computers cannot truly represent the Real number line completely, many
+compromises and errors are introduced by this approximation.  Python
+developers, as nearly all software developers, should keep attuned to the
+places where the inevitable errors (in a mathematical sense) become _mistakes_
+in a programming sense.
+
+== Numeric Datatypes
+
+Choosing the right datatype might not simply be using system default floating
+point.  For users of NumPy, one mistake often encountered is choosing an
+inappropriate bit width for floating point numbers; this concern applies equally
+for Pandas users. Within Pandas, an additional quasi-datatype mistake arises
+around using categorical data where appropriate.  However, as the appendix
+discusses, those libraries are outside the scope of this particular book.
+
+This section looks at places where developers might choose non-ideal—or
+indeed, dangerously flawed—datatypes
+
+include::numeric/financial.adoc[leveloffset=+1]
+include::numeric/commutative.adoc[leveloffset=+1]
+
+'''
+
+Choosing the right numeric datatype is often a relevant concern for Python
+programmers, and happily Python provides several options beyond floating
+point.  Creating custom classes with more specialized numeric datatypes is
+also relatively easy in Python, although only occasionally needed.
+
+== Wrapping Up
+
+In this chapter, we looked at a variety of "obvious" numeric operations that
+can go wrong, both within the _numeric domain_ of floating point numbers and
+in other domains.  There are numerous assumptions that developers tend to make
+about numbers—perhaps because we learned about how they should work in
+elementary school or middle-school—that become less obvious when we write
+actual computer programs.
+

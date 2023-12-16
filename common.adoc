@@ -1,0 +1,12 @@
+:imagedir: ../images
+
+:source-language: 
+:tabsize: 4
+
+:pagenums!:
+
+:sectids:
+:idprefix:
+:idseparator: -
+:sectlinks:
+:sectanchors:

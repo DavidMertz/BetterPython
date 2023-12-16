@@ -1,0 +1,216 @@
+== JSON Does Not Round-Trip Cleanly To Python
+
+A Python developer can be tempted into mistakenly thinking that arbitrary
+Python objects can be serialized as JSON, and relatedly that objects which can
+be serialized are necessarily deserialized as equivalent objects.
+
+=== Some Background On JSON
+
+In the modern world of microservices and "cloud-native computing", Python
+often needs to serialize and deserialize JSON data (JavaScript Object
+Notation).  Moreover, JSON doesn't only occur in the context of message
+exchange between small cooperating services, but is also used as a storage
+representation of certain structured data.  For example, GeoJSON and the
+related TopoJSON, or JSON-LD for ontology and knowledge graph data, are
+formats that utilize JSON to encode domain-specific structures.
+
+In surface appearance, JSON looks very similar to Python numbers, strings,
+lists, and dictionaries.  The similarity is sufficient that for many JSON
+strings, simply writing `eval(json_str)` will deserialize a string to a valid
+Python object; in fact, this will _often_ (but certainly not _always_) produce
+the same result as the correct approach of `json.loads(json_str)`. JSON looks
+_even more_ similar to native expressions in JavaScript (as the name hints),
+but even there, a few valid JSON strings cannot be deserialized (meaningfully)
+into JavaScript.
+
+While superficially `json.loads()` performs a similar task as
+`pickle.loads()`, and `json.dumps()` performs a similar task as
+`pickle.dumps()`, the JSON versions do distinctly _less_ in numerous
+situations.  The "type system" of JSON is less rich than is that of Python.
+For a large subset of all Python objects, including (deeply) nested data
+structures, this invariant holds:
+
+[source,python]
+----
+obj == pickle.loads(pickle.dumps(obj))
+----
+
+There are exceptions here.  File handles or open sockets cannot be sensibly
+serialized and deserialized, for example.  But most _data structures_,
+including custom classes, survive this round-trip perfectly well.
+
+In contrast, this "invariant" is very frequently violated:
+
+[source,python]
+----
+obj = json.loads(json.dumps(obj))
+----
+
+JSON is a very useful format in several ways.  It is (relatively) readable
+pure-text; it is highly interoperable with services written in other
+programming languages with which a Python program would like to cooperate;
+deserializing JSON does not introduce code execution vulnerabilities.
+
+Pickle (in its several protocol versions) is also useful.  It is a binary
+serialization format which is more compact than text. Or specifically, it is
+protocol 0, 1, 2, 3, 4, or 5, with each successive version being improved in
+some respect, but all following that characterization.  Almost all Python
+objects can be serialized in a round-trippable way using the `pickle` module.
+However, none of the services you might wish to interact with, written in
+JavaScript, Go, Rust, Kotlin, C++, Ruby, or other languages, has any idea what
+to do with Python pickles.
+
+=== Data That Fails To Round-Trip
+
+In the first place, JSON only defines a few datatypes.  These are discussed in
+RFC 8256 (https://datatracker.ietf.org/doc/html/rfc8259), ECMA-404
+(https://www.ecma-international.org/publications-and-standards/standards/ecma-404/),
+and ISO/IEC 21778:2017 (https://www.iso.org/standard/71616.html).  Despite
+having "the standard" enshrined by several standards bodies in
+not-quite-identical language, these standards are equivalent.
+
+We should back up for a moment.  I've now twice claimed—a bit incorrectly—that
+JSON has a limited number of datatypes.  In reality, JSON has zero datatypes,
+and instead is, strictly speaking, only a definition of a syntax with no
+semantics whatsoever.  As RFC 8256 defines the highest level of its BNF
+(Backus–Naur form):
+
+[source,bnf]
+----
+value ::= false | null | true | object | array | number | string
+----
+
+Here `false`, `null`, and `true` are literals, while object, array, number,
+and string are textual patterns.  To simplify, a JSON object is like a Python
+dictionary, with curly braces, colons, and commas.  An array is like a Python
+list, with square brackets and commas.  A number can take a number of formats,
+but the rules are _almost_ the same as what defines valid Python numbers.
+Likewise, JSON strings are _almost_ the same as the spelling of Python
+strings, but always with double quotes.  Unicode numeric codes are mostly the
+same between JSON and Python (edge cases concern very obscure surrogate pair
+handling).
+
+Let's take a look at some edge cases.  The Python standard library module
+`json` "succeeds" in two cases by producing output that is *not actually*
+JSON:
+
+[source,python]
+----
+>>> import json
+>>> import math
+>>> print(json.dumps({"nan": math.nan}))           # (1)
+{"nan": NaN}
+>>> print(json.dumps({"inf": math.inf}))
+{"inf": Infinity}
+>>> json.loads(json.dumps({'nan': math.nan}))      # (2)
+{'nan': nan}
+>>> json.loads(json.dumps({'inf': math.inf}))
+{'inf': inf}
+----
+
+(1) The result of `json.dumps()` is a string, printing it just removes the
+extra quotes in the echoed representation.
+
+(2) Neither NaN nor Infinity (under any spelling variation) are in the JSON
+standards.
+
+In some sense, this behavior is convenient for Python programmers, but it
+breaks compatibility with (many) consumers of these serializations in other
+programming languages.  We can enforce more strictness with `json.dumps(obj,
+allow_nan=False)`, which would raise `ValueError` in the above lines.
+However, _some_ other libraries in _some_ other programming languages also
+allow this almost-JSON convention.
+
+Depending on what you mean by "round-trip," you might say this succeeded.
+Indeed it does strictly within Python itself; but it fails when the _round
+trip_ involves talking with a service written in a different programming
+language, and it talking back. Let's look at some failures within Python
+itself.  The most obvious cases are in Python's more diverse collection types.
+
+.Not-quite round-tripping collections with JSON 
+[source,python]
+----
+>>> from collections import namedtuple
+>>> Person = namedtuple("Person", "first last body_temp")
+>>> david = Person("David", "Mertz", "37℃")
+>>> vector1 = (4.6, 3.2, 1.5)
+>>> vector2 = (9.8, -1.2, 0.4)
+>>> obj = {1: david, 2: [vector1, vector2], 3: True, 4: None}
+>>> obj
+{1: Person(first='David', last='Mertz', body_temp='37℃'), 
+2: [(4.6, 3.2, 1.5), (9.8, -1.2, 0.4)], 3: True, 4: None}
+
+>>> print(json.dumps(obj))
+{"1": ["David", "Mertz", "37\u2103"], "2": [[4.6, 3.2, 1.5], 
+[9.8, -1.2, 0.4]], "3": true, "4": null}
+>>> json.loads(json.dumps(obj))
+{'1': ['David', 'Mertz', '37℃'], '2': [[4.6, 3.2, 1.5], 
+[9.8, -1.2, 0.4]], '3': True, '4': None}
+----
+
+In JSON, Python's `True` is spelled `true`, and `None` is spelled `null`, but
+those are entirely literal spelling changes. Likewise, the Unicode character
+'DEGREE CELSIUS' can perfectly well live inside a JSON string (or any Unicode
+character other than a quotation mark, _reverse solidus_/backslash, and the
+control characters (U+0000 through U+001F).  For some reason, Python's `json`
+module decided to substitute with the numeric code, but such has no effect on
+the round-trip.
+
+What got lost was that some data was inside a `namedtuple` called `Person`,
+and other data was inside tuples.  JSON only has arrays, i.e. things in square
+brackets.  The general "meaning" of the data is still there, but we've lost
+important type information.
+
+Moreover, in the serialization, only strings are permitted as object keys, and
+hence our valid-in-Python integer keys were converted to strings.  However,
+this is lossy since a Python dictionary could, in principle (but it's not
+great code), have both string and numeric keys:
+
+[source,python]
+----
+>>> json.dumps({1: "foo", "1": "bar"})
+'{"1": "foo", "1": "bar"}'
+>>> json.loads(json.dumps({1: "foo", "1": "bar"}))
+{'1': 'bar'}
+----
+
+Two or three things conspired against us here.  Firstly, the JSON
+specification doesn't prevent duplicate keys from occurring.  Secondly, the
+integer `1` is converted to the string `"1"` when it becomes JSON.  And
+thirdly, Python dictionaries always have unique keys, so the second try at
+setting the `"1"` key overwrote the first try.
+
+Another somewhat obscure edge case is that JSON itself can validly represent
+numbers that Python does not support.
+
+[source,python]
+----
+>>> json_str = '[1E400, 3.141592653589793238462643383279]'
+>>> json.loads(json_str)
+[inf, 3.141592653589793]
+----
+
+This is not a case of crashing, nor failing to load numbers at all.  But
+rather, one number overflows to infinity since it is too big for float64, and
+the other is approximated to fewer digits of precision than are provided.
+
+A corner this edge case is that JSON numbers that "look like Python integers"
+actually get cast to `int` rather than `float`.
+
+[source,python]
+----
+>>> json_str = f'{"7"*400}'                        # (1)
+>>> val = json.loads(json_str)
+>>> math.log10(val)
+399.8908555305749
+>>> type(val)
+<class 'int'>
+----
+
+(1) A string of four hundred [.code]``"7"``s in a row.
+
+However, since few other programming languages or architectures you might
+communicate with will support, e.g., float128 either, best policy is usually
+to stick with numbers float64 can represent.
+
+

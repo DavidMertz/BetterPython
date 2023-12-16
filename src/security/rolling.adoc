@@ -1,0 +1,164 @@
+== "Rolling Your Own" Security Mechanisms
+
+It is a mistake to construct cryptographic protocols if you are not a
+professional cryptographer.  Something that _seems obviously strong_ probably
+is not.
+
+The Python standard library does not include most accepted cryptographic
+primitives.  There are reasons for this exclusion that are not mere laziness
+or oversight by the core developers of CPython.  Libraries dealing with
+cryptography evolve and fix discovered vulnerabilities at a different pace
+than the Python release cycle.  The developers of Python are not themselves
+necessarily cryptologists or cryptanalysts.   
+
+Debate sometimes arises among the CPython developers about whether this
+exclusion is the best policy, but it is *not* a lack of thought and discussion
+that led to the decision.  Even environments like those installed by
+miniconda, which include a _little bit_ beyond the standard library do not add
+general cryptographic primitives.
+
+A temptation arises—one which your author has himself been guilty of far too
+often—to just create something "good enough" based on those primitives that
+_are_ in the standard library.  For example, the standard library has
+`secrets`, `hmac`, and `hashlib` which include _some_ well-accepted
+cryptographic primitives.  If it feels like the threat-model for your code is
+limited and you are only aiming for "quick and dirty", you might quickly write
+something like this:
+
+.Hastily designed symmetric encryption developed by the author
+[source,python]
+----
+>>> def amateur_encrypt(plaintext: str, key: str) -> bytes:
+...     encoded_text = plaintext.encode()              # (1)
+...     m = hashlib.sha256()                           # (2)
+...     m.update(key.encode())                         # (3)
+...     # Expand length of key to match the full plaintext
+...     hashed_key = m.digest() * (1 + len(encoded_text)//32)
+...     ciphertext0 = b"".join(                        # (4)
+...         (a ^ b).to_bytes()
+...         for a, b in zip(encoded_text, hashed_key))
+...     ciphertext = b"".join(                         # (5)
+...         (a ^ b).to_bytes()
+...         for a, b in zip(reversed(ciphertext0), hashed_key))
+...     return ciphertext
+...
+>>> hidden = amateur_encrypt("Mary had a little lamb", 
+...                          "MyStrongKey!!17")
+>>> hidden
+b'\x8f}\xe5SDz\xb4f\xc5\x8f\x8d\xc1\x87\x91v\xb9wDF\xf6q\xa0'
+----
+
+(1) Bytes rather than unicode codepoints.
+
+(2) A cryptographically strong hash.
+
+(3) A hash of the key as bytes.
+
+(4) XOR between each key byte and encoded plaintext byte.
+
+(5) I _think_ I'm so "clever" as to obscure a frequency attack on a
+Vigenère-like cipher by XORing with reversed cipher.
+
+This encryption algorithm is good enough that _I do not know_ any better way
+to attack it than a brute-force search on the key.  Decrypting is pretty much
+symmetrical with the encryption, and works:
+
+.Hastily designed matching decryption
+[source,python]
+----
+>>> def amateur_decrypt(ciphertext: bytes, key: str) -> str:
+...     m = hashlib.sha256()
+...     m.update(key.encode())
+...     hashed_key = m.digest() * (1 + len(ciphertext)//32)
+...     plainbytes0 = b"".join(
+...         (a ^ b).to_bytes()                         # (1)
+...         for a, b in zip(ciphertext, hashed_key))
+...     plainbytes = b"".join(
+...         (a ^ b).to_bytes()
+...         for a, b in zip(reversed(plainbytes0), hashed_key))
+...     return plainbytes.decode()
+...
+>>> amateur_decrypt(hidden, "MyStrongKey!!17")
+'Mary had a little lamb'
+----
+
+(1) Under Python 3.11+ `.to_bytes()` has a default length of 1.  For older
+Python versions, you need to specify `.to_bytes(length=1)`.
+
+Here's the thing.  I'm not nearly smart enough to know how to attack this
+encryption algorithm, even if I were given many plaintexts and many
+ciphertexts.  However, my sliver of intelligence tells me that there are
+actual cryptanalysts who are *vastly* better at such attacks than I am.  It is
+extremely likely that you readers are not better cryptographers than I
+am.footnote:[As an idle diversion, I have created a challenge at
+https://gnosis.cx/better.  For this challenge, I have created 1000
+ciphertexts, all of which are encrypted with the same key, using _exactly_ the
+encryption code published here.  Moreover, all 1000 plaintexts these are
+encryptions of are sentences from a draft of this book (they may not occur
+verbatim after later editing though).  If any reader can identify the key 
+used, or even two of the plaintext sentences, I will deliver to them a
+signed copy of the print version of this book.] Just because you can't think
+of how to compromise an algorithm, that doesn't mean it that someone else
+can't.
+
+Rather than rely on amateur cryptography, the correct approach is to obtain
+the third-party pyca/cryptography library
+(https://cryptography.io/en/latest/).  This is implemented correctly by people
+who genuinely understand security, and is updated quickly if weaknesses are
+discovered.
+
+The protocol setup is probably slightly cumbersome, but is well documented in
+the module documentation. What I show can easily be wrapped in functions with
+simple signatures similar to the amateur ones I created above.
+
+.Symmetrical encryption done right
+[source,python]
+----
+>>> from pprint import pprint
+>>> import secrets
+>>> from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
+>>> from cryptography.hazmat.primitives.ciphers import (
+...     Cipher, algorithms, modes)
+
+>>> salt = secrets.token_bytes(16)                         # (2)
+>>> kdf = Scrypt(salt=salt, length=32, n=2**14, r=8, p=1)  # (1)
+>>> key = kdf.derive(b"MyStrongKey!!17")
+
+>>> iv = secrets.token_bytes(16)                           # (2)
+>>> cipher = Cipher(algorithms.AES(key), modes.CBC(iv))
+>>> encryptor = cipher.encryptor()
+
+>>> plaintext = b"Mary had a little lamb"
+>>> padded = plaintext.ljust(32, b"\x00")                  # (3)
+>>> encrypted = encryptor.update(padded) + encryptor.finalize()
+>>> pprint(encrypted, width=68)                            # (4)
+(b'\xfd\xaf}s\x9e8#\xe4\x94Fh\x83\x18\x17j\xa1\xe7\x8a\x98 '
+ b'\xc3\xd9\x07\xee\x1e\xe9\x9c\xf2\xec\x90\xf74')
+
+>>> decryptor = cipher.decryptor()
+>>> restored = decryptor.update(encrypted) + decryptor.finalize()
+>>> restored.rstrip(b"\x00")
+b'Mary had a little lamb'
+----
+
+(1) Key derivation function for 32 byte key based on password.
+
+(2) To reconstruct the `cipher` object, the value of `salt` and `iv` will need
+to be retained somewhere.  It is important that these are unique per message,
+but their secrecy is not important.  I.e. they are often aggregated with the
+message itself, as plaintext.
+
+(3) Must pad the plaintext to a multiple of 32 bytes for AES.
+
+(4) The encrypted text is also 32 bytes, identical to padded plaintext.
+
+There are a great many cryptographic protocols in the `cryptography` module
+beyond only Advanced Encryption Standard (AES;
+https://en.wikipedia.org/wiki/Advanced_Encryption_Standard).  In fact, there
+is a great deal beyond symmetric encryption algorithms.  Everything you will
+find therein is well audited and coded correctly.
+
+Even though the templates for using high-quality encryption are not entirely
+friendly or obvious, it is worth using proper cryptography as soon as you
+begin your project that uses it.
+

@@ -1,0 +1,73 @@
+== Confusing `is` With `==` (In The Presence Of Interning)
+
+Earlier in this chapter we have looked at `==` and `is` in some depth.  In
+some sense, this section is an extension of those discussions.  However, the
+issue here is _accidental identity_; or at least _non-guaranteed identity_.
+
+A sidenote to the introduction of this chapter discussed the fact that _small
+integers_ and _short strings_ will often reuse the identical objects to refer
+to equal objects that go by different names.  I strongly suspect that the
+"Faster CPython" project (https://github.com/faster-cpython/) will extend the
+range of objects that are interned, especially starting with Python 3.12.
+Already, PyPy (https://www.pypy.org/) is much more aggressive about object
+interning; albeit that element is only a very small aspect of the huge speedups
+it obtains via its tracing JIT
+(https://en.wikipedia.org/wiki/Tracing_just-in-time_compilation).
+
+A prior discussion looked at why you should never use `x == None` in your
+code; but ultimately, that was a stylistic issue and one of Pythonicity.
+Ultimately, none of your programs would break if you used that style
+violation.  Interned values are different.  You might notice something like
+this:
+
+[source,python]
+----
+>>> a = 5 * 5
+>>> b = 21 + 4
+>>> a is b, a == b
+(True, True)
+----
+
+Thinking too cleverly along these lines, you might conclude that identity
+comparison is probably faster than equality comparison.  To a small extent you
+would be correct (at least for Python 3.11, on my CPU and operating system):
+
+[source,python]
+----
+>>> def intern_id(a, b):
+...     for _ in range(20_000_000):
+...         a is b
+...
+>>> def intern_eq(a, b):
+...     for _ in range(20_000_000):
+...         a == b
+...
+>>> %timeit intern_id(a, b)
+361 ms ± 2.8 ms per loop (mean ± std. dev. of 7 runs, 1 loop each)
+>>> %timeit intern_eq(a, b)
+448 ms ± 9.96 ms per loop (mean ± std. dev. of 7 runs, 1 loop each)
+----
+
+The problem, of course, is that only some numbers (and some strings) that are
+equal are also identical, and actual programs almost always need to make
+comparisons on values that vary at runtime.  Other than special singletons, or
+when you genuinely care whether two custom objects (for example, objects at
+different positions in a collection) are identical, stick with equality
+checks.
+
+[source,python]
+----
+>>> fb1 = "foobar"
+>>> fb2 = "foo" + "bar"
+>>> fb3 = "   foobar   ".strip()
+>>> fb1 is fb2, fb1 == fb2
+(True, True)
+>>> fb1 is fb3, fb1 == fb3
+(False, True)
+
+>>> c = 250 + 9
+>>> d = 7 * 37
+>>> c is d, c == d
+(False, True)
+----
+

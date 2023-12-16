@@ -1,0 +1,109 @@
+== Type Annotations Are Not Runtime Constraints
+
+Suppose that we write a toy Python program that utilizes annotations.
+
+.Static and runtime type checking
+[source,python,linenums]
+----
+# type-violations.py
+from typing import TypeVar
+
+Numeric = TypeVar("Numeric", float, complex, contravariant=True)
+
+def fused_multiply_add(a: Numeric, b: Numeric, c: Numeric) -> Numeric:
+    r: Numeric = (a * b) + c
+    return r
+
+print("fused_multiply_add(1, 2, 3)", end=" -> ")
+try:
+    print(fused_multiply_add(1, 2, 3))
+except Exception as ex:
+    print(type(ex))
+
+print("fused_multiply_add('foo', 2, 'bar')", end=" -> ")
+try:
+    print(fused_multiply_add("foo", 2, "bar"))     # (1)
+except Exception as ex:
+    print(type(ex))
+
+print("fused_multiply_add('foo', 2.0, 'bar)", end=" -> ")
+try:
+    print(fused_multiply_add("foo", 2.0, "bar"))   # (2)
+except Exception as ex:
+    print(type(ex))
+
+print("fused_multiply_add(1+1j, 2.0, 3.0)", end=" -> ")
+try:
+    print(fused_multiply_add(1 + 1j, 2.0, 3.0))
+except Exception as ex:
+    print(type(ex))
+----
+
+(1) Line 18.
+
+(2) Line 24.
+
+Using the static type analyzer Mypy, we can find certain problems in this script.
+
+.Mypy analysis of type-violations.py
+[source,shell]
+----
+[BetterPython]$ mypy type-violations.py
+type-violations.py:18: error: Value of type variable "Numeric" of 
+  "fused_multiply_add" cannot be "object"
+type-violations.py:24: error: Value of type variable "Numeric" of 
+  "fused_multiply_add" cannot be "object"
+Found 2 errors in 1 file (checked 1 source file)
+----
+
+At runtime, the behavior is somewhat different.
+
+.Runtime exception catching of TypeError
+[source,shell]
+----
+[BetterPython]$ python type-violations.py
+fused_multiply_add(1, 2, 3) -> 5
+fused_multiply_add('foo', 2, 'bar') -> foofoobar
+fused_multiply_add('foo', 2.0, 'bar) -> <class 'TypeError'>
+fused_multiply_add(1+1j, 2.0, 3.0) -> (5+2j)
+----
+
+We can see that `type-violation.py` has typing issues both under static
+analysis and at runtime.  However, the errors are somewhat different from each
+other.  Most likely, from the name of the defined function, the developer did
+not intend for the function `fused_multiply_add()` to be used with strings,
+but we cannot know that for certain without either documentation or accurate
+annotations that are checked statically.
+
+It is tempting to generalize by saying that static analysis is "more strict"
+than runtime type checking.  However, while that happens to be true in this
+example, it is not true generally.  Annotations might only be used gradually.
+As well, there are numerous edge cases where static checkers will not catch
+issues arising dynamically. The set of complaints—even strictly `TypeError`
+exceptions—can be more extensive _either_ under static analysis _or_ under
+runtime checking.  Moreover, the details of this comparison depend on _which_
+static analysis tool is used, and in what version (which is very much outside
+the scope of this particular book).
+
+We can see why this particular example encounters a runtime type error:
+
+[source,python]
+----
+>>> "foo" * 2
+'foofoo'
+>>> "foo" * 2.0
+Traceback (most recent call last):
+[...]
+TypeError: can't multiply sequence by non-int of type 'float'
+----
+
+It happens that the static analysis tool would be perfectly happy to allow `2`
+and `2.0` interchangeably as floating-point-like numbers. This is what
+`typing.SupportsFloat` is used for; it's also why
+[.code]``fused_multiply_add(1, 2, 3)`` did not raise any complaint by the
+static analyzer.  But in Python, while strings can be "multiplied" by an
+integer, they cannot be multiplied by a floating point number, even one whose
+value is equal to an integer.
+
+If we removed *all* the type annotations from the above program, the runtime
+type checking and program behavior would not change whatsoever.

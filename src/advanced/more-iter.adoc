@@ -1,0 +1,155 @@
+== The `more-itertools` Third-Party Library
+
+The third-party library `more-itertools` is a pleasant little gem that extends
+the building blocks of the standard library `itertools` discussed in the last
+section.  Much as I have introduced other discussions within this section of
+this chapter, the problem is simply being unaware of a handy tool that will
+make a great many tasks you perform regularly easier.
+
+[NOTE]
+====
+Readers who come from the world of JavaScript may be familiar with the
+brilliantly useful library Lodash (https://lodash.com/), which adds back into
+JavaScript many of the powerful features that I personally miss most when I
+have to venture into that language from my more familiar, and friendlier,
+Python.  A great deal of what the Lodash library does, however, is implement
+functions similar to those provided by `itertools` and `more-itertools`.
+
+This is a book about Python, however, and you need not have ever used
+JavaScript or Lodash to read this chapter.  
+====
+
+I consider `more-itertools` to be, in a way, "the missing library in the
+batteries-included standard library."  As an aside, I would put `requests` and
+`pytest` into a similar category (although I understand the good reasons why
+each of these are not actually included).  One section in the _Security_
+chapter discusses why using `requests` is almost always to be preferred; the
+entire _Test Driven Development_ chapter more-or-less simply assumes that
+`pytest` is the right choice rather than the standard library.  
+
+Even though I also have chapters in this book discussing NumPy and Pandas
+because they are so very widely used by Python programmers, I would not wish
+these to live in the standard library; those rightly occupy somewhat different
+domains, and are developed on a different cadence than Python itself.  There
+are a few other libraries that are also nearly ubiquitiously used among Python
+developers: Matplotlib (https://matplotlib.org/); scikit-learn
+(https://scikit-learn.org/stable/); Flask
+(https://flask.palletsprojects.com/en/2.2.x/) or FastAPI
+(https://fastapi.tiangolo.com/); Pillow (PIL fork;
+https://pillow.readthedocs.io/en/stable/).  Clearly, there are mistakes that
+could be made with all of these libraries as well; but they are outside the
+scope of this book.
+
+An element of `more-itertools` that makes me give it a special place is that
+it is really not limited to any specific domain, as the other mentioned
+third-party libraries are.  Nearly everything you will do in Python might
+plausibly be made just a little bit clearer and a little bit easier by using
+functions from `more-itertools`.
+
+While I do not entirely object to Python programs that use `from itertools
+import *`, unfortunately I cannot write the same of `from more_itertools import
+*`.  The functions therein are clearly well designed to work well together (and
+with those in `itertools` and with the handful of built-in functions dedicated
+to working with iterators).  However, just a few of the names feel likely to
+conflict with names you are likely to use for reasonable and unrelated
+purposes.  While you are unlikely to use the name `interleave_longest()` for
+unrelated purposes, `locate()`, `replace()`, `difference()`, `consume()`,
+`collapse()`, and a few others feel like they might very innocently serve
+unrelated purposes to the versions in `more-itertools`. 
+
+Most or all of the recipes in the documentation for `itertools` are directly
+included within `more-itertools` as directly importable functions.  As well as
+providing those recipes without requiring you to copy paste them into your own
+code, about 100 additional wonderful functions for advanced "iterator algebra"
+are included in the module.  Clearly this book is not the place to repeat the
+documentation for all of those functions; see
+https://more-itertools.readthedocs.io/en/stable/api.html for that
+documentation.  However, let me show you just one (semi-random) example that I
+find particularly neat.
+
+With the rise of JSON as an interchange format between different software
+systems, highly-nested data structures have become more of a norm.  However,
+in Python, "Flat is better than nested" (per line 5 of the _Zen of Python_).
+Sometimes we'd like a painless way to traverse nested data without writing 
+custom code.  Such custom code usually uses recursion, which is an 
+appropriate use.  Sometimes though, we'd just like a simple function to do 
+it for us. For example:
+
+.Recursively flattening a nested (concrete) data structure
+[source,python]
+----
+>>> from more_itertools import collapse
+>>> data = [
+... [[[[[['insures'], 'mostests', 'fugs', 'debouchments'],
+...      'impostumated',
+...      'astringe',
+...      'mazeful'],
+...     'handrails',
+...     'floridean',
+...     'oxymoron'],
+...    'reprinter',
+...    'confessionals',
+...    'pornocracies'],
+...   'wryly',
+...   'lobotomizes',
+...   'gelatinous',
+...   'lipidoplast'],
+...  'muscardines',
+...  'contexts',
+...  'orphanism',
+...  'aftmost',
+...  ]
+>>> collapse(data)
+<generator object collapse at 0x7f5432ed49a0>
+>>> list(collapse(data))
+['insures', 'mostests', 'fugs', 'debouchments', 'impostumated',
+'astringe', 'mazeful', 'handrails', 'floridean', 'oxymoron',
+'reprinter', 'confessionals', 'pornocracies', 'wryly', 'lobotomizes',
+'gelatinous', 'lipidoplast', 'muscardines', 'contexts',
+'orphanism', 'aftmost']
+----
+
+This is nice, and we can see that the direct result of calling `collapse()` is
+a lazy iterator (which can thereby be combined and massaged using everything
+else within `itertools` and `more-itertools`).  
+
+What is even nicer is that this function works equally well on
+iterators that may themselves yield other iterators, without ever
+having to concretize more than one element at once.
+
+.Recursively flattening an iterator of iterators
+[source,python]
+----
+>>> from random import random, randint, choice, seed
+>>> def word_tree(words=None):
+...     if words is None:
+...         words = [word.rstrip() for word in open("sowpods")]
+...     if random() < 0.75:
+...         yield word_tree(words)
+...     for _ in range(randint(1, 4)):
+...         yield choice(words)
+...
+>>> seed(4)                                        # (1)
+>>> wt = word_tree()
+>>> wt
+<generator object word_tree at 0x7f5432d0d990>
+>>> next(wt)
+<generator object word_tree at 0x7f5432d0f2e0>     # (2)
+>>> seed(4)                                        # (1)
+>>> for word in collapse(word_tree()):
+...     print(word, end=" ")
+...
+insures mostests fugs debouchments impostumated astringe mazeful
+handrails floridean oxymoron reprinter confessionals pornocracies
+wryly lobotomizes gelatinous lipidoplast muscardines contexts
+orphanism aftmost
+----
+
+(1) Using a seed creates reproducible randomness.
+
+(2) The first value yielded by the iterator is an iterator itself.
+
+Our familiar SOWPODS wordlist, utilized in a variety of other examples, is
+available at https://gnosis.cx/better.
+
+

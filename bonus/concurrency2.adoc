@@ -1,0 +1,28 @@
+= Concurrency Pitfalls
+
+== This chapter covers
+
+* mistake 1
+* mistake 2
+
+'''
+
+The nature of these mistakes....
+
+include::concurrency2/race.adoc[leveloffset=+0]
+include::concurrency2/deadlock.adoc[leveloffset=+0]
+include::concurrency2/busy-wait.adoc[leveloffset=+0]
+include::concurrency2/safe-data.adoc[leveloffset=+0]
+include::concurrency2/noyield.adoc[leveloffset=+0]
+include::concurrency2/lock-cm.adoc[leveloffset=+0]
+include::concurrency2/sleep-wait.adoc[leveloffset=+0]
+
+== Wrapping Up
+
+Rambling thoughts about what the moral of this chapter is...
+
+== Summary
+
+* Do this.
+* Do that.
+

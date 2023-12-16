@@ -1,0 +1,130 @@
+== Mutating An Object During Iteration
+
+You should not mutate objects that you are iterating over.  At times you can
+"get away with" it without bad effects, but the habit remains a bad one.
+
+The first thing that we should note is that some Python objects are immutable.
+If you iterate over a `str`, `bytes`, `tuple`, or `frozenset` object, for
+example, the question simply does not arise of mutating the underlying
+collection.
+
+Still, a lot of Python objects are both iterable and mutable.  Most notably
+`list`, `dict`, `set`, and `bytearray`, although of course custom or
+third-party objects might be both also.  Attempting to mutate during iteration
+over an object can go wrong in several different ways:
+
+.Baseline iteration over immutable object
+[source,python]
+----
+>>> s = "Mary had a little lamb!"
+>>> for c in s:
+...     if c <= "s":
+...         print(c, end="")
+... print()
+Mar had a lile lamb!
+----
+
+The toy code is mostly pointless in itself, but we do a selective operation
+on only those elements of an iterable that meet some predicate.  One thing we
+could certainly do rather than print off individual characters is re-aggregate
+those passing the filter into some new collection.  That approach is generally
+a perfectly good solution to all of the mutation issues, so keep it in your
+pocket as an option.
+
+Suppose we want to try something similar using mutable collections rather than
+an immutable string.
+
+.Quick failure in mutation of iterables
+[source,python]
+----
+>>> my_set
+{'r', 'M', 'm', 'a', 'e', 'h', 'l', 't', 'd', 'b', '!', ' ', 'i'}
+>>> my_set = set("Mary had a little lamb!")
+>>> for c in my_set:
+...     if c > "s":
+...         my_set.discard(c)
+...
+Traceback (most recent call last):
+[...]
+RuntimeError: Set changed size during iteration
+
+>>> my_dict = {c:ord(c) for c in "Mary had a little lamb!"}
+>>> for c in my_dict:
+...     if c > "s":
+...         del my_dict[c]
+...
+Traceback (most recent call last):
+[...]
+RuntimeError: dictionary changed size during iteration
+----
+
+The temptation to mutate these iterables is reduced by hitting a
+`RuntimeError` quickly.  However, we are less fortunate for ordered
+collections.  Something goes wrong, but the error can be much more subtle and
+harder to notice:
+
+.Hidden failure in mutation of iterables
+[source,python]
+----
+>>> my_list = list("Mary had a little lamb!")
+>>> for i, c in enumerate(my_list):
+...     if c > "s":
+...         del my_list[i]
+...
+>>> my_list
+['M', 'a', 'r', ' ', 'h', 'a', 'd', ' ', 'a', ' ', 'l', 'i', 
+'t', 'l', 'e', ' ', 'l', 'a', 'm', 'b', '!']
+>>> "".join(my_list)
+'Mar had a litle lamb!'
+>>> my_ba = bytearray("Mary had a little lamb!", "utf8")
+>>> for i, c in enumerate(my_ba):
+...     if c > ord("s"):
+...         del my_ba[i]
+...
+>>> my_ba
+bytearray(b'Mar had a litle lamb!')
+----
+
+In this code, things appear superficially to work correctly.  No execeptions
+are raised.  We genuinely do get a `list` or `bytearray` with some characters
+removed.  However, looking slightly more closely we see that one of the `t`
+characters that should be filtered out remains in the mutated object.  This
+happened because once an element was deleted, the index position no longer
+aligns with the actual underlying sequence.  A corresponding problem would
+arise with insertion of new elements.
+
+The correct way to approach this requirement is simply to create a brand new
+object based on the predicate applied, and selectively append to it.  An
+append is a cheap operation on Python `list` or `bytearray` (however,
+insertion into the _middle_ of a new sequence can easily hit quadratic
+complexity—a danger warned about in other parts of this book).
+
+.Creating new object as a filter of a sequence
+[source,python]
+----
+>>> my_list = list("Mary had a little lamb!")
+>>> new_list = []
+>>> for c in my_list:
+...     if c <= "s":
+...         new_list.append(c)
+...
+>>> new_list
+['M', 'a', 'r', ' ', 'h', 'a', 'd', ' ', 'a', ' ', 'l', 'i', 
+'l', 'e', ' ', 'l', 'a', 'm', 'b', '!']
+>>> "".join(new_list)
+'Mar had a lile lamb!'
+----
+
+Even more compactly:
+
+[source,python]
+----
+>>> new_list = [c for c in my_list if c <= "s"]
+>>> "".join(new_list)
+'Mar had a lile lamb!'
+----
+
+Recall that you can also make a (shallow) copy of a sequence simply by taking
+the null slice of it.  In slightly different scenarios, `my_list[:]` or
+`my_ba[:]` can often be useful as easy syntax for creating a new sequence
+containing the same items.

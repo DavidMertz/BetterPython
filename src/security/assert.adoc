@@ -1,0 +1,162 @@
+== Don't Use `assert` To Check Safety Assumptions
+
+Assertions are a wonderful means of communicating your intent to other
+developers who read the code you write.  It can be tempting to extend this
+utility to guarding against dangers in code, but doing so is a mistake for a
+simple reason.  Code run in production sometimes uses the `-O` or `-OO`
+switches to (very slightly) optimize code performance.
+
+When Python code is "optimized" one of the basic such optimizations is removal
+of assertions.  During development they are a good way to enforce assumptions
+in the code; however, to eke out a few percent faster production systems,
+optimization switches are commonly used.  The difference these flags make is
+small, and I myself rarely use them; but be aware that they might be used, and
+my own habits are far from universal in this respect.
+
+Here is a short example of a reasonable use of assertions.  This is an echo of
+the chapter _Advanced Python Usage_, in the section "Directly accessing a
+protected attribute."  We presented there a class-based version of a
+pseudo-random linear congruential generator.  The details of this algorithm
+are discussed somewhat more in that chapter, as well as in this chapter's
+mistake "Kinds of randomness."  
+
+The algorithm presented here is a perfectly reasonable pseudo-random number
+generator, but for production use, you should use the `random` module from the
+standard library, and thereby implicitly the Mersenne Twister algorithm (at
+least as of Python 3.12). The focus of this section is simply to show _some_
+algorithm_ with invariants, not to discuss pseudo-random number generation
+in general.
+
+We can implement this algorithm as a generator function:
+
+.Generator function implementating an LCG
+[source,python]
+----
+def lcg(
+    seed: int = 123,
+    multiplier: int = 1_103_515_245,
+    modulus: int = 2**32,
+    increment: int = 1
+):
+    # Simple constraints we should follow
+    assert 0 < modulus
+    assert 0 < multiplier < modulus
+    assert 0 <= increment < modulus
+    assert 0 <= seed < modulus
+
+    # One initial application of recurrence relation
+    state = (multiplier * seed + increment) % modulus
+
+    while True:
+        state = (multiplier * state + increment) % modulus
+        yield state / modulus
+----
+
+We can utilize the generator to obtain pseudo-random numbers in the interval
+_[0, 1)_.
+
+[source,python]
+----
+>>> from lcg import lcg
+>>> for x, _ in zip(lcg(), range(5)):
+...     print(x)
+...
+0.7730483340565115
+0.7532131555490196
+0.8828994461800903
+0.6617866707965732
+0.1618147783447057
+----
+
+The assertions made were concretely useful when I was first debugging this
+code.  Moreover, they communicate to other developers some of my expectations
+about the reasonable preconditions for the algorithm to work (some are much
+more nuanced; what makes a "good" modulus and multiplier would take full papers
+in number theory, not single lines).
+
+However, suppose that a naive developer wanted to enhance this code by having
+a fallback to Python's standard library `random` module when disallowed
+parameters were passed in.  For example:
+
+.Source code of `code/bad_lcg.py`
+[source,python]
+----
+def bad_lcg(
+    seed: int = 123,
+    multiplier: int = 1_103_515_245,
+    modulus: int = 2**32,
+    increment: int = 1
+):
+    # Skip LCG algorithm if parameters are not usable
+    try:
+        assert 0 < modulus
+        assert 0 < multiplier < modulus
+        assert 0 <= increment < modulus
+        assert 0 <= seed < modulus
+
+        # One initial application of recurrence relation
+        state = (multiplier * seed + increment) % modulus
+
+        while True:
+            state = (multiplier * state + increment) % modulus
+            yield state / modulus
+
+    except AssertionError:
+        import random
+        while True:
+            yield random.random()
+
+if __name__ == '__main__':
+    for x, _ in zip(bad_lcg(multiplier=-1), range(5)):
+        print(x)
+----
+
+At first brush, this seems to work.  At least in the sense of getting _some_
+pseudo-random numbers (albeit not ones that are easily reproducible as in the
+non-fallback case):
+
+[source,shell]
+----
+[BetterPython]$ python code/bad_lcg.py
+0.9091770816298352
+0.5190613689590089
+0.911898811723727
+0.8066722366593495
+0.5563737722223733
+[BetterPython]$ python code/bad_lcg.py
+0.19828280342458238
+0.3661064573367322
+0.02637664736327605
+0.04362950928898546
+0.32456135199248937
+----
+
+This breaks down rather badly once we run the code with the optimization flag,
+however:
+
+[source,shell]
+----
+[BetterPython]$ python -O code/bad_lcg.py
+2.8638169169425964e-08
+0.9999999715946615
+2.8638169169425964e-08
+0.9999999715946615
+2.8638169169425964e-08
+----
+
+These pseudo-random numbers are very bad at their job.  Specifically, the same
+two numbers (close to the extremes of the unit interval) will alternate
+forever, which is not an expected distribution.  Moreover, if you are using
+this numeric stream for anything vaguely security-related, many attack vectors
+are opened up by failing to fallback to the alternate code path.  Depending on
+the context, of course, many other problems might occur as well; for example,
+performance problems, errors in modeling, excessive collisions of e.g. hash
+keys, and so on.
+
+The wisdom of this specific fallback is a separate matter; there are
+absolutely many other contexts where a fallback is reasonable.  The solution
+to this error is extremely simple, happily.  Simply use explicit checks for
+the conditions that are permitted or prohibited within `if`/`elif` or
+`match`/`case` blocks, and use those to fallback to alternate behavior.  Using
+an explicit `raise` of an exception other than `AssertionError` within those
+blocks is perfectly reasonable as well.

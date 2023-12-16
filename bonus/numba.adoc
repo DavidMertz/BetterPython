@@ -1,0 +1,1 @@
+== Not using Numba for numeric code that is not directly vectorizable

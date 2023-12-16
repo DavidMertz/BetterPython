@@ -1,0 +1,124 @@
+== It’s Easier To Ask For Forgiveness Than Permission
+
+Admiral Grace Hopper, who invented or popularized linkers,
+machine-independent programming languages, and the term "bug" in the
+programming sense, also famously commented "It’s easier to ask forgiveness
+than it is to get permission."
+
+In the Python world—and to some degree within other programming language
+communities—the contrasting acronyms EAFP and LBYL (look before you leap) are
+commonly used.  In fact, the official Python documentation describes this
+(https://docs.python.org/3/glossary.html#term-EAFP):
+
+[quote,Python Documentation,Glossary]
+Easier to ask for forgiveness than permission. This common Python coding style
+assumes the existence of valid keys or attributes and catches exceptions if
+the assumption proves false. This clean and fast style is characterized by the
+presence of many try and except statements. The technique contrasts with the
+LBYL style common to many other languages such as C.
+
+In the main, this discussion is merely a moderate expansion of the official
+documentation.  As with some other concerns of this book, preferring EAFP is
+merely a rough rule-of-thumb; using LBYL is certainly not _categorically_ a
+mistake.  However, if you find yourself writing a LBYL pattern, it is
+definitely worth asking yourself whether it might better be expressed in a
+EAFP style.
+
+For a simple example, suppose that you have files with wordlists, one word per
+line.  As often in this book, I've used the SOWPODS wordlist
+(https://gnosis.cx/better/data/sowpods) to randomly select words for the
+simple code shown.  Specifically, I've variously run a command similar to
+`shuf sowpods | head -50 > 50-words`, in a separate terminal.
+
+[source,python]
+----
+>>> def total_length(words_file):
+...     total = 0
+...     while word := words_file.readline():
+...         total += len(word.strip())  # remove trailing LF
+...     return total
+...
+>>> words1 = open("data/50-words")
+>>> words2 = open("data/50-more-words")
+>>> total_length(words1)
+454
+>>> total_length(words2)
+444
+----
+
+It's a simple function, but it does something sensible.  However, there are a
+lot of ways this function can go amiss.
+
+[source,python]
+----
+>>> total_length(problem1)
+Traceback (most recent call last):
+[...]
+ValueError: I/O operation on closed file.
+
+>>> total_length(problem2)
+Traceback (most recent call last):
+[...]
+AttributeError: 'PosixPath' object has no attribute 'readline'
+
+>>> total_length(problem3)
+Traceback (most recent call last):
+[...]
+UnicodeDecodeError: 'utf-8' codec can't decode byte 0xe6 in 
+  position 2: invalid continuation byte
+
+>>> total_length(problem4)
+Traceback (most recent call last):
+[...]
+OSError: [Errno 5] Input/output error
+----
+
+A LBYL approach would be to check for the problems before attempting to call
+`total_length()` with the object you have in hand.  This might start as:
+
+[source,python]
+----
+if not hasattr(words_file, "readline"):
+    print("words_file is not a file-like object")
+elif words_file.closed:
+    print("words_file is a closed file")
+else:
+    print(f"Aggregate length is {total_length(words_file)}")
+----
+
+The problem here is that we have not even checked for those exceptions I have
+specifically thought of and created in my REPL session, let alone all of those
+I have so-far failed to consider.  I honestly do not know a mechanism other
+than [.code]``try``ing to answer the question of whether some unread bytes
+will be decodable as UTF-8 (nor from another encoding, if specified in
+`open()`).  Nor do I know how to ask in advance whether I/O might fail. In the
+above REPL, I created that condition by putting a file on a thumb drive and
+physically removing it; similar issues occur on network filesystems and in
+other circumstances.
+
+The EAFP approach is simply more flexible and more Pythonic here. For example:
+
+[source,python]
+----
+try:
+    print(f"Aggregate length is {total_length(words_file)}")
+except AttributeError as err:
+    print(f"words_file is not file-like: {type(words_file)}")
+except ValueError as err:
+    if hasattr(words_file, "closed") and words_file.closed:
+        print("words_file is a closed file")
+    else:
+        print(f"ValueError encounted with message {type(err)}")
+except UnicodeDecodeError as err:
+    print(f"UnicodeDecodeError: {err}")
+except OSError as err:
+    print(f"OSError (probably I/O problem): {err}")
+except Exception as err:
+    print(f"Other error type: {err} {type(err)}")
+----
+
+This EAFP code handles _more_ cases than does LBYL, but it also handles
+absolutely every failure with a generic fallback.  We are able to provide
+different remediation of the problem for every exception that we know about,
+and some very general fallback for those problems we did not think about when
+first writing the code.

@@ -1,0 +1,6 @@
+== Letting threads dangle
+
+On concurrency, leaving a dangling (thread/process/async task) when reading
+from a queue: If you have a thread reading from a queue, and you're done with
+the thread, leaving it hanging out in a blocked state waiting for a queue item
+that will never come instead of finding a way to signal it to close

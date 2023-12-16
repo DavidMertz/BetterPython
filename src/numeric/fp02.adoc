@@ -1,0 +1,128 @@
+== NaNs And `statistics.median()`
+
+In the last section we discussed the sometimes surprising behavior of NaNs in
+extensive detail.  Please refer back to the footnotes, notes, and discussion
+there if you need to familiarize yourself.
+
+One of the main modules in the Python standard library for working with
+collections of floating point numbers is `statistics`.  As we saw, in the
+earlier discussion, when you think about collections of floating point
+numbers, you should keep in mind that some floating point numbers are NaNs.
+
+Most of the functions within `statistics` _propagate_ NaNs.  That is, if some
+of the numbers in a collection are NaNs, the result simply becomes NaN as
+well.  Two such functions are `statistics.mean()` and `statistics.fmean()`;
+these functions differ from each other in that the former tries to preserve
+the specific numeric datatype of elements while the latter automatically
+converts everything to floating point numbers (and is thereby generally
+faster).
+
+.Comparing `statistics.mean()` with `statistics.fmean()`
+[source,python]
+----
+>>> import statistics
+>>> from fractions import Fraction as F
+>>> a = [F(3, 7), F(1, 21), F(5, 3), F(1, 3)]
+>>> statistics.mean(a)
+Fraction(13, 21)
+>>> statistics.fmean(a)
+0.6190476190476191
+>>> from decimal import Decimal as D
+>>> b = [D("0.5"), D("0.75"), D("0.625"), D("0.375")]
+>>> statistics.mean(b)
+Decimal('0.5625')
+>>> statistics.fmean(b)
+0.5625
+----
+
+When we introduce NaNs, it becomes impossible to say what the "mean value" is,
+regardless of which approach we are using:
+
+.Taking a mean in the presence of NaN values
+[source,python]
+----
+>>> import math
+>>> statistics.fmean([math.nan] + b)
+nan
+>>> statistics.mean(a + [math.nan])
+nan
+----
+
+Similar behavior is encountered with functions like `statistics.stdev()`,
+`statistics.variance()`, `statistics.correlation()` and others, for
+essentially the same reason.  Interestingly, `statistics.mode()` and
+`statistics.multimode()` are "NaN-aware" rather than "NaN-propagating."
+
+[source,python]
+----
+>>> from math import nan
+>>> statistics.mode([nan, nan, nan, 4, 3, 3, 3.0])
+nan
+>>> statistics.multimode([nan, nan, nan, 4, 3, 3, 3.0])
+[nan, 3]
+----
+
+I would likely argue that this behavior of `statistics.mode` is non-obvious,
+or perhaps even wrong.  Those several NaN values should never be equal to each
+other (although they are identical), and it's not clear the sense in which
+"the same" value occurs multiple times.  However, this behavior remains clear
+and easy to understand, even if purity concerns are possibly pushed aside.
+
+Where we find a genuinely odd corner of module behavior is with
+`statistics.median()` (and its close relatives `statistics.median_low()`,
+`statistics.median_high()` and `statistics.median_grouped()`.  In all of
+these, the presence of NaN values make the results completely nonsensical.
+
+.Median becomes silly in the presence of NaNs
+[source,python]
+----
+>>> statistics.median([nan, nan, nan, 4, 3, 3, 7])
+3
+>>> statistics.median_grouped([nan, nan, nan, 4, 3, 3, 7])
+3.2
+>>> statistics.median_high([7, 4, 3, 3, nan, nan, nan])
+7
+>>> statistics.median_grouped([7, 4, 3, 3, nan, nan, nan])
+6.625
+----
+
+Depending on where elements occur within a list of numbers, the median might
+be the lowest number, the highest number, a NaN (with some orderings not
+shown), or in the case of `statistics.median_grouped()`, some number that
+incorporates a fairly meaningless mean into the overall result (for strictly
+non-NaN values, this "value between the elements" is sometimes quite useful).
+
+There are basically two ways we might go about _fixing_ this.  I have argued on
+the python-ideas mailing list that these functions should grow an optional
+argument to clarify behavior; I've never completely convinced the module's main
+author.  One approach is to introduce NaN-propagation, the other is to
+introduce NaN-stripping.  Notably, these two approaches are the default
+behaviors of NumPy and Pandas, respectively (but varying from each other).
+
+Fortunately, chosing either of these behaviors is easy to achieve in Python,
+you just have to remember to do it.
+
+.Median with NaN-propagation
+[source,python]
+----
+>>> c = [nan, nan, nan, 4, 3, 3, 7]
+>>> d = [4, 3, 3, 7, 0, 10, 4]
+>>> math.nan if math.nan in c else statistics.median(c)
+nan
+>>> math.nan if math.nan in d else statistics.median(d)
+4
+----
+
+Notice that this ternary clause works because `in` will do an identity check
+before it tries an equality test. As we've seen, `nan != nan`, so the fact it
+checks this way is necessary for the suggestion to work.  For the latter
+option:
+
+.Median with NaN-stripping
+[source,python]
+----
+>>> statistics.median([x for x in c if not math.isnan(x)])
+3.5
+>>> statistics.median([x for x in d if not math.isnan(x)])
+4
+----

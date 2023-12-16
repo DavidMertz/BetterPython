@@ -1,0 +1,9 @@
+#!/bin/bash
+/usr/bin/time -f "Build time (PDF): %e seconds" \
+    asciidoctor-pdf -a pdf-theme=manning-robot book.adoc &&
+    mv book.pdf BetterPython.pdf
+
+/usr/bin/time -f "Build time (LaTeX): %e seconds" \
+    asciidoctor-latex -q book.adoc &&
+    mv book.tex BetterPython.tex &&
+    rm -f book.aux book.log book.out newEnvironments.tex

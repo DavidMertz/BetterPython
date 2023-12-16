@@ -1,0 +1,314 @@
+== Use `itertools` (Sufficiently)
+
+This pitfall joins others in its section in simply describing how developers
+may take approaches that are _less good_ than those enabled by versions using
+the _itertools_ module.  This "less good" is rarely a matter of producing the
+wrong results, but is often a matter of producing the right result more
+slowly, sometimes worse in big-O complexity behavior (i.e. quickly exceeding
+available time and computer resources).
+
+The basic Python language is very powerful.  One of the concepts Python has
+moved towards emphasizing is _lazy computation_.  Specifically, iterables in
+Python may be large or infinite.  Concrete collections are also (usually)
+iterable, but many iterables that are not concrete collections have a nice
+property of producing exactly one object at a time, and requiring almost no
+memory beyond that needed for that one object.  
+
+[NOTE]
+.Iterables and iterators
+====
+Users new to the concept can often overlook the somewhat subtle distinction
+between _iterables_ and _iterators_.  The fact that many iterables are their
+own iterator does not help in sorting out that confusion.  These types of
+things are programmatically defined by `collections.abc.Iterable` and
+`collections.abc.Iterator`, respectively.
+
+In brief, an iterable is an object that, when passed to the built-in function
+`iter()` returns an iterator.  And iterator is simply an object that when
+passed to the built-in function `next()` either returns a value or raises
+`StopIteration`.  These two simple properties make iterables and iterators
+_play nice_ with loops, comprehensions, and other "iterable contexts." 
+
+Generator functions return iterators when called.  But iterables and iterators
+may also be defined by custom classes.  As usual, it is the presence of dunder
+methods that allow objects to work with operators and built-in functins.  A
+typical such class might look like:
+
+[source,python]
+.An iterable class that is its own iterator
+----
+>>> class Ones:
+...     def __next__(self):
+...         return 1
+...     def __iter__(self):
+...         return self
+...
+>>> list(zip(Ones(), "ABC"))
+[(1, 'A'), (1, 'B'), (1, 'C')]
+----
+
+Since an instance of the `Ones` class returns itself when passed to `iter()`
+(which occurs implicitly in any iterable context, such as when an argument to
+`zip()`), `Ones()` is both an iterable and an iterator.  We could spell this
+equivalently as `itertools.repeat(1)`, which likewise yields infinitely many
+values (in the example, the number 1 infinitely many times).
+====
+
+When producing each object yielded by an iterable is resource intensive—
+whether requiring significant computation, significant I/O, or utilizing
+significant memory—doing so once at a time makes for better programs.  For
+example, programs that don't crash with out-of-memory errors or take months to
+finish creating a collection, are better than those that do.  For big data,
+being able to process _one datum_ now, and produce one partial result, is
+almost always better than needing to produce only final aggregate collections.
+For time sensitive data, doing so is often a hard requirement (think of
+self-adjusting industrial equipment or stock tickers which are effectively
+infinite data streams).
+
+As with other features in this section, nothing you can do using the functions
+in the standard library `itertools` module cannot be done without them.  In
+fact, in the documentation of the module
+(https://docs.python.org/3/library/itertools.html), every provided function is
+accompanied by a sample (approximate) implementation in Python (often the
+underlying CPython version is coded in C, and might behave subtly differently
+in a few edge cases).  The purpose of the functions in `itertools` is to
+provide a kind of embedded language for working with infinite or very large
+iterator.  However, even though you _could_ write each of the relatively few
+functions in `itertools` yourself, most have pitfalls where a subtly wrong
+implementation will wind up using large amounts of memory rather than
+remaining fully lazy.
+
+The documentation for `itertools` itself contains almost as many recipes as
+there are functions within the module.  Each of these is only a handful of
+lines (often fewer than 5), but combine the building blocks of the module in
+the _right way_ rather than getting some subtlety wrong that might break edge
+cases or result in bad big-O behavior.
+
+=== Reading FASTA
+
+Let's look at small program that uses iterators, then we'll uses `itertools`
+functions to combine them.  The FASTA format
+(https://www.ncbi.nlm.nih.gov/BLAST/fasta.shtml) is a textual format used in
+bioinformatics to describe nucleotide or amino acid sequences.  Very often, a
+single file with an extension like `.fa`, `.fna`, `fra`, or `.fasta` will
+contain hundreds of thousands of sequences, each containing tens of thousands
+of single-letter codes.  For example, such a file might represent an analysis
+of the genetic diversity in a milliliter of soil or seawater, with each record
+describing a distinct bacterium species (diversity of microscopic organisms is
+amazing).
+
+.Generator function to read a FASTA file incrementally
+[source,python]
+----
+from collections import namedtuple
+FASTA = namedtuple("FASTA", "Description Sequence")
+
+def read_fasta(filename):
+    with open(filename) as fh:
+        line = next(fh)
+        if not line.startswith(">"):
+            raise ValueError(
+                f"{filename} does not appear to be in FASTA format")
+        description = line[1:].rstrip()
+        nucleic_acids = []
+        for line in fh:
+            if line.startswith(">"):
+                yield FASTA(description, "".join(nucleic_acids))
+                description = line[1:].rstrip()
+                nucleic_acids = []
+            else:
+                nucleic_acids.append(line.rstrip())  # (1)
+        yield FASTA(description, "".join(nucleic_acids))
+----
+
+(1) FASTA files typically, but not uniformly, have 80-width lines within
+sequence blocks; but the newline is not meaningful.
+
+Reading a file that contains just two sequences, the putative mRNA sequences
+for the Pfizer and Moderna COVID-19 vaccines, respectively:footnote:[The data
+used can be obtained at
+https://gnosis.cx/better/data/COVID-19-vax-mRNA.fasta.  It is taken from
+"Assemblies of putative SARS CoV2 spike encoding mRNA sequences for vaccines
+BNT-162b2 and mRNA-1273" by Dae-Eun Jeong, Matthew McCoy, Karen Artiles, Orkan
+Ilbay, Andrew Fire, Kari Nadeau, Helen Park, Brooke Betts, Scott Boyd, Ramona
+Hoh, and Massa Shoura ( https://github.com/NAalytics).]
+
+[source,python]
+----
+>>> for vaccine in read_fasta("COVID-19-vax-mRNA.fasta"):
+...     print(f">{vaccine.Description}")
+...     print(vaccine.Sequence[:60] + "...")
+...
+>Spike-encoding_contig_assembled_from_BioNTech/Pfizer_BNT-162b2
+GAGAATAAACTAGTATTCTTCTGGTCCCCACAGACTCAGAGAGAACCCGCCACCATGTTC...
+>Spike-encoding_contig_assembled_from_Moderna_mRNA-1273
+GGGAAATAAGAGAGAAAAGAAGAGTAAGAAGAAATATAAGACCCCGGCGCCGCCACCATG...
+----
+
+Let's move on to _doing something_ with this FASTA data that we can iterate
+over.
+
+=== Run-Length Encoding
+
+In data that is expected to have many consecutive occurrences of the same
+symbol, run-length encoding (RLE) can often offer significant compression of
+the representation.  RLE is often used as one component within sophisticated
+compression algorithms.
+
+In particular, we can write extremely compact implementations of run-length
+encoding and run-length decoding by using `itertools`.  These implementations
+also have the virtue of being able to operate lazily.  That is, both of the
+following functions can be consumed one value at a time, and accept 
+iterables as arguments, and hence operate efficiently on large, or even
+infinite, streams of data.
+
+.Run-length functions
+[source,python]
+----
+from collections.abc import Iterable, Iterator
+from itertools import groupby, chain, repeat
+
+def rle_encode(it: Iterable) -> Iterator:
+    for k, g in groupby(it):
+        yield (k, len(list(g)))
+
+def rle_decode(it: Iterable) -> Iterator:
+    yield from chain.from_iterable(repeat(x, n) for x, n in it)
+----
+
+The functions are annotated only to emphasize that they operate lazily.  They
+utilize the `itertools` functions `groupby()`, `chain.from_iterable()`, and
+`repeat()` to keep the code compact and lazy.  The argument _to_
+`chain.from_iterable()` is itself a generator comprehension, as well. Exactly
+_why_ these work so elegantly is left, to some degree, for readers who should
+read the official documentation of each function (and of the other handy
+functions in the module). It's worth seeing these operate to understand what's
+going on:
+
+[source,python]
+----
+>>> from itertools import islice
+>>> for vaccine in read_fasta("COVID-19-vax-mRNA.fasta"):
+...     encoded = rle_encode(vaccine.Sequence)     # (1)
+...     first5_regions = islice(encoded, 5)        # (1)
+...     print(vaccine.Description)
+...     print(list(first5_regions))                # (2)
+...
+Spike-encoding_contig_assembled_from_BioNTech/Pfizer_BNT-162b2
+[('G', 1), ('A', 1), ('G', 1), ('A', 2), ('T', 1)]
+Spike-encoding_contig_assembled_from_Moderna_mRNA-1273
+[('G', 3), ('A', 3), ('T', 1), ('A', 2), ('G', 1)]
+----
+
+(1) The objects `seq` and `first5_regions` are lazy iterators, not concrete.
+
+(2) Only by creating a list from iterator do we allocate memory.
+
+We can verify that our paired function are symmetrical
+
+[source,python]
+----
+>>> for vaccine in read_fasta("data/COVID-19-vax-mRNA.fasta"):
+...     encoded = rle_encode(vaccine.Sequence)
+...     decoded = rle_decode(encoded)
+...     print(vaccine.Description)
+...     print(decoded)
+...     print("".join(islice(decoded, 60)) + "...")
+...
+Spike-encoding_contig_assembled_from_BioNTech/Pfizer_BNT-162b2
+<generator object rle_decode at 0x7f5441632810>
+GAGAATAAACTAGTATTCTTCTGGTCCCCACAGACTCAGAGAGAACCCGCCACCATGTTC...
+Spike-encoding_contig_assembled_from_Moderna_mRNA-1273
+<generator object rle_decode at 0x7f54416f7440>
+GGGAAATAAGAGAGAAAAGAAGAGTAAGAAGAAATATAAGACCCCGGCGCCGCCACCATG...
+----
+
+Notice that the functions `rle_encode()` and `rle_decode()` are not limited to
+encoding or decoding characters; such is merely handy for the examples. In
+fact, any kind of iterable of any kind of values that might be repeated
+successively will work equally well in being encoded or decoded by these
+functions.  They will also work on infinitely long iterators of values to
+encode or decode, as long as you only ask for a finite number of the values at
+once.
+
+=== More "Iterator Algebra"
+
+It is, of course, somewhat silly and unnecessary to worry so much about
+laziness in concretizing iterators for a file that has exactly two relatively
+short nucleotide sequences.  As mentioned though, similar files can be far
+larger collections of far longer sequences.  Many other data sources can also
+be large, or slow to produce subsequent data (such as ones obtained from slow
+remote online sources); the techniques discussed in this section apply equally
+to those.
+
+Some of the additional functions in `itertools` include `dropwhile()`,
+`takewhile()`, `pairwise()`, `accumulate()`, `tee()`, `permutations()`,
+`combinations()`, `zip_longest()`, and `filterfalse()`. `filter()` is a
+built-in, but is "spiritually" part of `itertools`, as are `map()`, `range()`,
+`enumerate()`, and `zip()`.  That list is not complete, but it's probably the
+ones I use most often.  The excellent official documentation discusses
+everything in the module.  Given that `itertools` in many ways extends several
+itertools-like functions already in +++<code>__builtins__</code>+++, using
+`from itertools import *` is one of the rare cases where I do not recommend
+against the _import *_ pattern discussed elsewhere in this book.
+
+Suppose that you have a FASTA source that might be large, and you wish to
+identify every (RNA) sequence where a long run of the same nucleotide occurs.
+But once you find one within a sequence, you don't want to spend extra work
+examining the rest of that sequence.
+
+[source,python]
+----
+>>> for vaccine in read_fasta("data/COVID-19-vax-mRNA.fasta"):
+...     long_seq = next(dropwhile(lambda run: run[1] < 8,
+...         rle_encode(vaccine.Sequence)), None)
+...     print(vaccine.Description)
+...     print(f"First long nucleotide duplication: {long_seq}")
+...
+Spike-encoding_contig_assembled_from_BioNTech/Pfizer_BNT-162b2
+First long nucleotide duplication: None
+Spike-encoding_contig_assembled_from_Moderna_mRNA-1273
+First long nucleotide duplication: ('A', 9)
+----
+
+'''
+
+To illustrate how concise and powerful iterator algebra can be, let's look at
+a somewhat famous mathematical series.  The _alternating harmonic series_
+converges to the natural log of 2.  It's not an especially fast convergence,
+but an elegant implementation can elegantly utilize several iterator-combining
+functions.
+
+image::images/ln_2.png[width=60%]
+
+[source,python]
+----
+>>> from math import log
+>>> log(2)
+0.6931471805599453
+
+>>> from itertools import accumulate, cycle, islice
+>>> alt_harm = accumulate(sign/denom
+...         for (denom, sign) in enumerate(cycle([1, -1]), start=1))
+>>> for approx in islice(alt_harm, 1_000_000, 1_000_003):  # (1)
+...     print(approx)
+...
+0.6931476805592526
+0.6931466805612526
+0.6931476805582526
+>>> for approx in islice(alt_harm, 4_000_000, 4_000_001):  # (2)
+...     print(approx)
+...
+0.6931470805601476
+----
+
+(1) Consume the first million-and-three terms into accumulator.
+
+(2) Note that this is the _next_ 4M terms, so 5M in total.
+
+'''
+
+This section only presented a few uses of `itertools`.  The functions inside
+the module can be combined in myriad ways, and being able to think in terms of
+such combinations is a valuable skill for any Python developer.
+
